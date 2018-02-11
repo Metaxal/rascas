@@ -1,6 +1,8 @@
 #lang scribble/manual
+@require[racket/require]
 @require[@for-label[rascas
-                    racket/base]
+                    (subtract-in racket/base
+                                 rascas)]
          racket/base
          racket/runtime-path]
 
