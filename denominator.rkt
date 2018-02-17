@@ -1,5 +1,7 @@
 #lang racket/base
 
+;;;; This file has been changed for its original dharmatech/mpl version.
+
 (provide denominator)
 
 (require (rename-in (only-in racket/base denominator) (denominator rkt:denominator))

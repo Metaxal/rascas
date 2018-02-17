@@ -1,5 +1,7 @@
 #lang racket/base
 
+;;;; This file has been changed for its original dharmatech/mpl version.
+
 (provide degree-gpe) 
 
 (require (only-in srfi/1 every)

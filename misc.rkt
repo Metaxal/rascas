@@ -1,5 +1,7 @@
 #lang racket/base
 
+;;;; This file has been changed for its original dharmatech/mpl version.
+
 (require racket/match)
 
 (provide product? quotient? sum? difference? power? factorial? function?

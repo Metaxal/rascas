@@ -1,5 +1,7 @@
 #lang racket/base
 
+;;;; This file has been changed for its original dharmatech/mpl version.
+
 (provide polynomial-gpe?
         polynomial-gpe-in?
         is-polynomial-gpe?)

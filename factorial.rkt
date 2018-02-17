@@ -1,5 +1,7 @@
 #lang racket/base
 
+;;;; This file has been changed for its original dharmatech/mpl version.
+
 (provide ! simplify-factorial)
 
 (require (prefix-in rkt: (only-in racket/base - *))

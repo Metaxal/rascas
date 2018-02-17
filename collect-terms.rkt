@@ -1,5 +1,7 @@
 #lang racket/base
 
+;;;; This file has been changed for its original dharmatech/mpl version.
+
 (provide collect-terms)
 
 (require (only-in srfi/1 iota)
