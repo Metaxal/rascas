@@ -1,6 +1,6 @@
 #lang racket/base
 
-;;;; This file has been changed for its original dharmatech/mpl version.
+;;;; This file has been changed from its original dharmatech/mpl version.
 
 (provide coefficient-gpe coefficient-monomial-gpe)
 
