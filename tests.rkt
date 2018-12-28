@@ -892,6 +892,19 @@
             (derivative (alge " (3*x - 2) / (2*x + 5) ") x)
             (alge " 3 / (5 + 2*x) - 2*(-2 + 3*x)/(5 + 2*x)^2 "))
 
+(test-equal "derivative log"
+            (derivative '(log x) 'x)
+            (^ x -1))
+
+(test-equal "derivative log foo"
+            (derivative '(log (foo x)) 'x)
+            '(* (derivative (foo x) x) (^ (foo x) -1)))
+
+(test-equal "derivative exp foo"
+            (derivative '(* 3 (exp (foo x))) 'x)
+            '(* 3 (derivative (foo x) x) (exp (foo x))))
+
+
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; polynomial-division
