@@ -6,6 +6,7 @@
 
 (provide product? quotient? sum? difference? power? factorial? function?
          exp?
+         log?
          sin?
          cos?
          tan?
@@ -90,6 +91,13 @@
 (define (exp? expr)
   (match expr
     [`(exp ,n) #t]
+    [else      #f]))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (log? expr)
+  (match expr
+    [`(log ,n) #t]
     [else      #f]))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
