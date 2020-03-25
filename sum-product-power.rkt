@@ -7,7 +7,7 @@
          racket/match
          (prefix-in rkt: (only-in racket/base + * expt)))
 
-(provide + * ^
+(provide + * ^ (rename-out [^ expt])
          simplify-sum
          simplify-product
          simplify-power)
