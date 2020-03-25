@@ -2,7 +2,8 @@
 
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
-(require "order-relation.rkt"
+(require "misc.rkt"
+         "order-relation.rkt"
          racket/match
          (prefix-in rkt: (only-in racket/base + * expt)))
 
@@ -44,9 +45,14 @@
     [(list 1 _) 1]
     [(list _ 0) 1]
     [(list _ 1) v]
-    [(list (? number?) (? number?)) (rkt:expt v w)]
-    [(list `(^ ,r ,s)  (? integer?)) (^ r (* s w))]
-    [(list `(* . ,vs)  (? integer?)) (apply * (map (raise-to w) vs))]
+    [(list (? exact-number?) (? exact-number?))
+     (define z (rkt:expt v w))
+     (if (exact? z)
+         z ; reducing is fine
+         `(^ ,v ,w))] ; don't reduce. Ex: (^ 2 1/2)
+    [(list (? number?) (? number?)) (rkt:expt v w)] ; one is inexact
+    [(list `(^ ,r ,s)  _ #;(? exact-number?)) (^ r (* s w))]
+    [(list `(* . ,vs)  (? exact-number?)) (apply * (map (raise-to w) vs))]
     [else  `(^ ,v ,w)]))
 
 (define (simplify-power u)

@@ -13,37 +13,15 @@
           
          order-relation)
 
-  #;(import (rnrs)
-          (mpl match)
-          (except (mpl misc) base exponent))
-
-  ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-  (define (base u)
-    (match u
-      [`(^ ,x ,y) x]
-      [(? number?) #f]
-      [else u]))
-
-  (define (exponent u)
-    (match u
-      [`(^ ,x ,y)  y ]
-      [(? number?) #f]
-      [else        1 ]))
-
   ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
   (define (term u)
 
     (match u
-
       [(? number?) #f]
-
       [`(* ,(and u1 (? number?)) . ,u-rest)
        `(* ,@u-rest)]
-
       [`(* . ,u-elts) u]
-
       [else `(* ,u)]))
 
   ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

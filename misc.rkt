@@ -4,7 +4,8 @@
 
 (require racket/match)
 
-(provide product? quotient? sum? difference? power? factorial? function?
+(provide exact-number? inexact-number?
+         product? quotient? sum? difference? power? factorial? function?
          exp?
          log?
          sin?
@@ -19,6 +20,15 @@
 
 (module+ test
   (require rackunit))
+
+(define (exact-number? x)
+  (and (number? x)
+       (exact? x)))
+
+(define (inexact-number? x)
+  (and (number? x)
+       (inexact? x)))
+
 
 ;; Racket's `modulo' takes only integers and behaves differently.
 (define (mod x n)
@@ -125,15 +135,17 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (base expr)
-  (if (power? expr)
-      (list-ref expr 1)
-      expr))
+(define (base u)
+  (match u
+    [`(^ ,x ,y) x]
+    [(? number?) u]
+    [else u]))
 
-(define (exponent expr)
-  (if (power? expr)
-      (list-ref expr 2)
-      1))
+(define (exponent u)
+  (match u
+    [`(^ ,x ,y)  y ]
+    [(? number?) #f]
+    [else        1 ]))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -144,10 +156,6 @@
             ...))))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (inexact-number? x)
-  (and (number? x)
-       (inexact? x)))
 
 (define-syntax-rule (while test body ...)
   (let loop ()
