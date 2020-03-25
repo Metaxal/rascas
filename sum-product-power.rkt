@@ -4,7 +4,7 @@
 
 (require "order-relation.rkt"
          racket/match
-         (prefix-in rkt: (only-in racket/base + *)))
+         (prefix-in rkt: (only-in racket/base + * expt)))
 
 (provide + * ^
          simplify-sum
@@ -44,7 +44,7 @@
     [(list 1 _) 1]
     [(list _ 0) 1]
     [(list _ 1) v]
-    [(list (? number?) (? integer?)) (expt v w)]
+    [(list (? number?) (? number?)) (rkt:expt v w)]
     [(list `(^ ,r ,s)  (? integer?)) (^ r (* s w))]
     [(list `(* . ,vs)  (? integer?)) (apply * (map (raise-to w) vs))]
     [else  `(^ ,v ,w)]))

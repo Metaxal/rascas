@@ -9,6 +9,7 @@
 
 (define (sqrt x)
   (if (and (number? x)
-           (exact? (rkt:sqrt x)))
+           (or (inexact? x) ; floats propagate
+               (exact? (rkt:sqrt x))))
       (rkt:sqrt x)
       (^ x 1/2)))

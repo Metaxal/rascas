@@ -7,6 +7,8 @@
 (provide exp)
 
 (define (exp u)
-  (if (number? u)
+  (if (and (number? u)
+           (or (inexact? u)
+               (exact? (rkt:exp u))))
       (rkt:exp u)
       `(exp ,u)))
