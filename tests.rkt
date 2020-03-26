@@ -858,6 +858,19 @@
 ;; derivative
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(test-equal "Derivative multi product"
+            (derivative (* 2 x a (log x)) x)
+            (* 2 a (+ 1 (log x))))
+
+(test-equal "Derivative multi product.2"
+            (derivative (* 3  'x '(f x) '(g x)) 'x)
+            '(* 3 (+ (* (derivative (f x) x)
+                        (g x)
+                        x)
+                     (* (f x)
+                        (+ (g x)
+                           (* (derivative (g x) x)
+                              x))))))
 
 (test-equal "Mendelson: 8.1"
             (derivative (alge "2*x-7") x)

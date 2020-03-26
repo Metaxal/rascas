@@ -138,14 +138,12 @@
 (define (base u)
   (match u
     [`(^ ,x ,y) x]
-    [(? number?) u]
     [else u]))
 
 (define (exponent u)
   (match u
-    [`(^ ,x ,y)  y ]
-    [(? number?) #f]
-    [else        1 ]))
+    [`(^ ,x ,y) y]
+    [else       1]))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -5,10 +5,7 @@
 (require racket/match
          "misc.rkt")
 
-(provide base
-         exponent
-          
-         term
+(provide term
          const
           
          order-relation)
@@ -47,7 +44,7 @@
                  (O-3 (cdr u-elts)
                       (cdr v-elts)))))))
 
-  (define (order-relation u v)
+  (define (order-relation u v [already-exchanged? #f])
 
     (cond ((and (number? u)
                 (number? v)) ;; O-1
@@ -137,5 +134,7 @@
                #f
                (order-relation (car u) v)))
 
+          [already-exchanged?
+           (error "Cannot find an order relation for " (list u v))]
           (else ;; O-13
-           (not (order-relation v u)))))
+           (not (order-relation v u #t)))))
