@@ -7,7 +7,7 @@
          racket/match
          (prefix-in rkt: (only-in racket/base + * expt)))
 
-(provide + * ^ (rename-out [^ expt])
+(provide + * ^ (rename-out [^ expt]) sqr
          simplify-sum
          simplify-product
          simplify-power)
@@ -116,6 +116,9 @@
 
 (define (* . elts)
   (simplify-product `(* ,@elts)))
+
+(define (sqr x)
+  (* x x))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; +
