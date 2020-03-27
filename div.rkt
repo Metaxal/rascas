@@ -25,6 +25,7 @@
   (check-equal? (/ 3 4) 3/4)
   (check-equal? (/ 3 'a) '(* 3 (^ a -1)))
   (check-equal? (/ 3 1 2 4) 3/8)
-  (check-equal? (/ 'a 2 (* 2 'a)) 1/4))
+  (check-equal? (/ 'a 2 (* 2 'a)) 1/4)
+  (check-equal? (/ 'a 2 'b) '(* 1/2 a (^ b -1))))
 
   
