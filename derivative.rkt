@@ -7,6 +7,9 @@
 (require "misc.rkt"
          "arithmetic.rkt"
          "contains.rkt"
+         "sin.rkt"
+         "cos.rkt"
+         "tan.rkt"
          racket/list
          racket/match)
         
@@ -38,19 +41,32 @@
         (define *ws (apply * ws))
         (+ (* v (derivative *ws x))
            (* *ws (derivative v x)))]
+       ;; Trigonometry
        [`(sin ,v)
         (* (cos v) (derivative v x))]
        [`(cos ,v)
         (* (- (sin v)) (derivative v x))]
        [`(tan ,v)
         (* (^ `(sec ,v) 2) (derivative v x))]
+       ; unknown function symbols
        [else `(derivative ,u ,x)])]))
 
 (module+ test
   (require rackunit)
-  (check-equal? (derivative (exp 'x) 'x)
-                '(exp x))
+  (check-equal? (derivative (+ (* 3 (^ 'x 2)) (* 4 'x)) 'x)
+                (+ (* 6 'x) 4))
+  (check-equal? (derivative (/ 3 'x) 'x)
+                (/ -3 (sqr 'x)))
+  (check-equal? (derivative (exp (* 3 'x)) 'x)
+                '(* 3 (exp (* 3 x))))
 
-  (check-equal? (derivative (log 'x) 'x)
+  (check-equal? (derivative (log (* 3 'x)) 'x)
                 '(^ x -1))
+
+  (check-equal? (derivative (sin (* 3 'x)) 'x)
+                '(* 3 (cos (* 3 x))))
+  (check-equal? (derivative (cos (* 3 'x)) 'x)
+                '(* -3 (sin (* 3 x))))
+  (check-equal? (derivative (tan (* 3 'x)) 'x)
+                '(* 3 (^ (sec (* 3 x)) 2)))
   )
