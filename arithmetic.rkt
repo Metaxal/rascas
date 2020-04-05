@@ -5,12 +5,12 @@
 (require "misc.rkt"
          "order-relation.rkt"
          racket/match
-         (prefix-in rkt: (only-in racket/base + * expt abs / exp sqrt))
+         (prefix-in rkt: (only-in racket/base + * expt abs / exp sqrt log))
          (prefix-in rkt: (only-in racket/math sgn))
          (prefix-in rkt: (only-in math/number-theory factorial))
          racket/list)
 
-(provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn exp !
+(provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn exp ! log
          simplify-sum
          simplify-difference
          simplify-product
@@ -369,14 +369,23 @@
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (exp u)
-  (if (and (number? u)
-           (or (inexact? u)
-               (exact? (rkt:exp u))))
-      (rkt:exp u)
-      (match u
-        [`(log ,v) v]
-        [else `(exp ,u)])))
+  (cond
+    [(and (number? u)
+          (let ([r (rkt:exp u)])
+            (and
+             (or (inexact? u)
+                 (exact? r))
+             r)))]
+    [else
+     (match u
+       [`(log ,v) v]
+       ; todo: what if product or a sum with a log in the middle?
+       [else `(exp ,u)])]))
 
+(module+ test
+  (check-equal? (exp 0) 1)
+  (check-equal? (exp (log 'x)) 'x)
+  (check-equal? (exp (log 1.1)) 1.1))
 
 
 (define (expand-exp-rules u)
@@ -439,3 +448,33 @@
     [`(^ ,a ,b)
      (expand-power a b)]
     [else u]))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; log
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define log
+  (case-lambda
+    [(u)
+     (cond
+       ; TODO: This case occurs for many functions. Generalize it?
+       [(and (number? u)
+             (let ([r (rkt:log u)])
+               (and
+                (or (inexact? u)
+                    (exact? r))
+                r)))]
+       [(exp? u) (list-ref u 1)]
+       [else `(log ,u)])]
+    [(u v)
+     (cond
+       [(and (number? u) (number? v))
+        (rkt:log u v)]
+       [else `(log ,u ,v)])]))
+
+(module+ test
+  (require rackunit)
+  (check-equal? (log 1) 0)
+  (check-equal? (log 2) '(log 2))
+  #;(check-equal? (log 2 2) 1) ; ERROR
+  (check-equal? (log (exp 2)) 2))

@@ -6,7 +6,6 @@
 
 (require "misc.rkt"
          "arithmetic.rkt"
-         "log.rkt"
          "sin.rkt"
          "cos.rkt"
          "tan.rkt")

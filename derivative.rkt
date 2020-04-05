@@ -7,7 +7,6 @@
 (require "misc.rkt"
          "arithmetic.rkt"
          "contains.rkt"
-         "log.rkt"
          racket/list
          racket/match)
         
