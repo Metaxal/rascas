@@ -4,7 +4,7 @@
 
 (require racket/match)
 
-(provide exact-number? inexact-number?
+(provide exact-number? inexact-number? even-number?
          product? quotient? sum? difference? power? factorial? function?
          exp?
          log?
@@ -28,6 +28,10 @@
 (define (inexact-number? x)
   (and (number? x)
        (inexact? x)))
+
+(define (even-number? x)
+  (and (integer? x)
+       (even? x)))
 
 
 ;; Racket's `modulo' takes only integers and behaves differently.

@@ -7,7 +7,6 @@
 (require "misc.rkt"
          "sum-product-power.rkt"
          "sub.rkt"
-         "div.rkt"
          "factorial.rkt"
          "exp.rkt"
          "log.rkt"

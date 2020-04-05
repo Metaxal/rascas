@@ -6,9 +6,11 @@
          substitute-this
          substitute-in
          sequential-substitute
-         concurrent-substitute)
+         concurrent-substitute
+         apply//)
 
 (require racket/match
+         racket/dict
          "automatic-simplify.rkt")
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -40,17 +42,35 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (concurrent-substitute u S)
-  (automatic-simplify
-   (let ((result (findf (lambda (elt)
-                         (equal? u (car elt)))
-                       S)))
-     (cond ( result (list-ref result 1) )
-           ( (list? u)
-             (map (lambda (elt)
-                    (concurrent-substitute elt S))
-                  u) )
-           ( else u )))))
+;; TODO: to speed up, specialized variant that just substitutes
+;; symbols with eq?, and sort the symbols(not sure it's worth it)
+(define (concurrent-substitute u S [=? equal?])
+  (let loop ([u u])
+    (cond [(assoc u S =?) => cadr]
+          [(list? u) (automatic-simplify (map loop u))]
+          [else u])))
+
+
+;; Like concurrent-apply, but the substitutions are given as a dictionary.
+;; Substitutions apply only to symbols, and substitutions are not done
+;; in substitutes.
+(define apply//
+  (case-lambda
+    ;; Substitutions are provided as 2 lists.
+    ;; Make a dictionary (hasheq) and 
+    [(u syms vals)
+     (unless (= (length syms) (length vals))
+       (raise-arguments-error 'apply// "syms and vals must have the same lengths"))
+     (apply// u (make-hasheq (map cons syms vals)))] ; immutable?
+    ;; Substitutions are provided as a dictionary
+    [(u subst-dict)
+     (unless (dict? subst-dict)
+       (raise-argument-error 'apply// "subst-dict must be a dict?"))
+     (let loop ([u u])
+       (cond [(symbol? u)
+              (dict-ref subst-dict u u)]
+             [(list? u) (automatic-simplify (map loop u))]
+             [else u]))]))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

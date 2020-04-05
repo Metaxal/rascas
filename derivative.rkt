@@ -6,12 +6,9 @@
 
 (require "misc.rkt"
          "arithmetic.rkt"
-         "sin.rkt"
-         "cos.rkt"
-         "tan.rkt"
+         "contains.rkt"
          "exp.rkt"
          "log.rkt"
-         "contains.rkt"
          racket/list
          racket/match)
         
@@ -20,6 +17,8 @@
     [(equal? u x) 1]
     [else
      (match u
+       [`(sgn ,_) 0] ; actually undefined for x=0(!)
+       [`(abs ,v) (sgn v)] ; should be undefined for v=0
        [`(exp ,v)
         (* (derivative (second u) x)
             u)]

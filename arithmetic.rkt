@@ -3,7 +3,8 @@
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
 (require "sum-product-power.rkt"
-         "sub.rkt"
-         "div.rkt")
+         "sub.rkt")
 
-(provide + - * / ^)
+(provide (all-from-out
+          "sum-product-power.rkt"
+          "sub.rkt"))

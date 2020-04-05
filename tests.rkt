@@ -4,6 +4,8 @@
 
 (require (only-in srfi/1 lset=)
          "main.rkt"
+         (for-syntax racket/base)
+         racket/format
          rackunit)
 
 (define-syntax test-equal-anon
@@ -13,10 +15,30 @@
 
 (vars a b c d x y z pi t)
 
-(define test-equal
-  (case-lambda
-    [(a b) (check-equal? a b)]
-    [(msg a b) (check-equal? a b msg)]))
+(define n-tests-tried 0)
+(define n-tests-passed 0)
+(define-syntax-rule (report-error msg a-in b-in line)
+  (let ([a a-in] [b b-in])
+    (set! n-tests-tried (+ 1 n-tests-tried))
+    (cond
+      [(equal? a b)
+       (set! n-tests-passed (+ 1 n-tests-passed))]
+      [else
+       (displayln (~a "------------"
+                     "\nCheck failed line " line
+                     (if msg (~a "\nMessage: " msg) "")
+                     "\nActual:   " a
+                     "\nExpected: " b
+                     "\n------------\n")
+                 (current-error-port))])))
+
+;; Really just to support either 2 or 3 args...
+(define-syntax (test-equal stx)
+  (syntax-case stx ()
+    [(_ msg a b) (with-syntax ([line (syntax-line stx)])
+                   #'(report-error msg a b line))]
+    [(_ a b) (with-syntax ([line (syntax-line stx)])
+               #'(report-error #f a b line))]))
 
 (test-equal "Figure 1.5"
             (- (/ (* x y) 3))
@@ -1073,3 +1095,6 @@
                                 x)
             (list 2 (alge " -x + 2 ")))
 
+
+(displayln
+ (~a n-tests-passed "/" n-tests-tried " tests passed."))
