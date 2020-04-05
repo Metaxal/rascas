@@ -321,15 +321,20 @@
 (define (simplify-difference u)
   (match u
     [`(- ,x)    (* -1 x)]
-    [`(- ,x ,y) (+ x (* -1 y))]))
+    [`(- ,x . ,ys) (+ x (* -1 (apply + ys)))]))
 
 (define (- . elts)
   (simplify-difference `(- ,@elts)))
 
+(module+ test
+  (check-equal? (- 1 2 3) -4)
+  (check-equal? (- 5) -5)
+  (check-equal? (- 'x) (* -1 'x))
+  (check-equal? (- 'x 'y 'z) (+ 'x (* -1 (+ 'y 'z))))) 
+
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; /
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 (define (simplify-quotient u)
   (match u
@@ -346,7 +351,6 @@
 
 (module+ test
   (require rackunit)
-  #;(displayln "tests...")
   (check-equal? (/ 0. 1.) 0.)
   (check-equal? (/ 0 1.) 0)
   (check-equal? (/ 1. 1.) 1.)
@@ -429,9 +433,9 @@
 
 (define (expand-main-op u)
   (match u
-    ( `(* ,a . ,rest)
-      (expand-product a
-                      (expand-main-op (apply * rest))) )
-    ( `(^ ,a ,b)
-      (expand-power a b) )
-    ( else u )))
+    [`(* ,a . ,rest)
+     (expand-product a
+                     (expand-main-op (apply * rest)))]
+    [`(^ ,a ,b)
+     (expand-power a b)]
+    [else u]))

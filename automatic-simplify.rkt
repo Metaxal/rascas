@@ -18,6 +18,11 @@
 (define (automatic-simplify u)
   (if (list? u)
       (let ((v (map automatic-simplify u)))
+        ;; TODO: All operators should follow the logic
+        ;; (apply op (cdr v))
+        ;; instead of relying on simplify-* functions
+        ;; (that is, the operators should be forced to
+        ;; do the simplifications)
         (cond ((power?      v) (simplify-power      v))
               ((product?    v) (simplify-product    v))
               ((sum?        v) (simplify-sum        v))
