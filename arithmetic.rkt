@@ -11,7 +11,7 @@
          racket/list)
 
 (provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn
-         exp log ! (rename-out [^ factorial]) 
+         exp log ! (rename-out [! factorial]) 
          simplify-sum
          simplify-difference
          simplify-product
