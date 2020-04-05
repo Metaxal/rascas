@@ -1,7 +1,6 @@
 #lang racket/base
 (require "arithmetic.rkt"
          "derivative.rkt"
-         "factorial.rkt"
          "substitute.rkt")
 
 (provide taylor)
@@ -19,8 +18,7 @@
                           (+ k 1)))))))
 
 (module+ test
-  (require "exp.rkt"
-           rackunit)
+  (require rackunit)
   
   (check-equal? (taylor '(exp x) 'x 'x0 3)
                 '(+

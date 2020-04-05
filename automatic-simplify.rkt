@@ -5,15 +5,11 @@
 (provide automatic-simplify)
 
 (require "misc.rkt"
-         "sum-product-power.rkt"
-         "sub.rkt"
-         "factorial.rkt"
-         "exp.rkt"
+         "arithmetic.rkt"
          "log.rkt"
          "sin.rkt"
          "cos.rkt"
-         "tan.rkt"
-         "sqrt.rkt")
+         "tan.rkt")
 
 (define (kind v)
   (and (pair? v)

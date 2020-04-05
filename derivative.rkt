@@ -7,7 +7,6 @@
 (require "misc.rkt"
          "arithmetic.rkt"
          "contains.rkt"
-         "exp.rkt"
          "log.rkt"
          racket/list
          racket/match)
@@ -20,7 +19,7 @@
        [`(sgn ,_) 0] ; actually undefined for x=0(!)
        [`(abs ,v) (sgn v)] ; should be undefined for v=0
        [`(exp ,v)
-        (* (derivative (second u) x)
+        (* (derivative v x)
             u)]
        [`(log ,v)
         (/ (derivative v x)
@@ -47,3 +46,12 @@
         (* (^ `(sec ,v) 2) (derivative v x))]
        [(? (free-of? x)) 0]
        [else `(derivative ,u ,x)])]))
+
+(module+ test
+  (require rackunit)
+  (check-equal? (derivative (exp 'x) 'x)
+                '(exp x))
+
+  (check-equal? (derivative (log 'x) 'x)
+                '(^ x -1))
+  )

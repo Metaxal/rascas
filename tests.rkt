@@ -2,6 +2,14 @@
 
 ;;;; This file has been changed for its original dharmatech/mpl version.
 
+;;; For most cases, it's best to compare with Maxima.
+;;;
+;;; TODO: look at other sources:
+;;; racket-cas:
+;;; https://github.com/soegaard/racket-cas
+;;; Yascas (recommended by soegaard):
+;;; https://github.com/grzegorzmazur/yacas/tree/master/tests
+
 (require (only-in srfi/1 lset=)
          "main.rkt"
          (for-syntax racket/base)
@@ -17,28 +25,32 @@
 
 (define n-tests-tried 0)
 (define n-tests-passed 0)
-(define-syntax-rule (report-error msg a-in b-in line)
-  (let ([a a-in] [b b-in])
-    (set! n-tests-tried (+ 1 n-tests-tried))
-    (cond
-      [(equal? a b)
-       (set! n-tests-passed (+ 1 n-tests-passed))]
-      [else
-       (displayln (~a "------------"
-                     "\nCheck failed line " line
-                     (if msg (~a "\nMessage: " msg) "")
-                     "\nActual:   " a
-                     "\nExpected: " b
-                     "\n------------\n")
-                 (current-error-port))])))
+(define-syntax-rule (my-check msg a-in b-in line)
+  (with-handlers ([exn:fail?
+                   (λ (e)
+                     (displayln (~a "Checked failed line " line))
+                     (raise e))])
+    (let ([a a-in] [b b-in])
+      (set! n-tests-tried (+ 1 n-tests-tried))
+      (cond
+        [(equal? a b)
+         (set! n-tests-passed (+ 1 n-tests-passed))]
+        [else
+         (displayln (~a "------------"
+                        "\nCheck failed line " line
+                        (if msg (~a "\nMessage: " msg) "")
+                        "\nActual:   " a
+                        "\nExpected: " b
+                        "\n------------\n")
+                    (current-error-port))]))))
 
 ;; Really just to support either 2 or 3 args...
 (define-syntax (test-equal stx)
   (syntax-case stx ()
     [(_ msg a b) (with-syntax ([line (syntax-line stx)])
-                   #'(report-error msg a b line))]
+                   #'(my-check msg a b line))]
     [(_ a b) (with-syntax ([line (syntax-line stx)])
-               #'(report-error #f a b line))]))
+               #'(my-check #f a b line))]))
 
 (test-equal "Figure 1.5"
             (- (/ (* x y) 3))

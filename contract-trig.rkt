@@ -13,7 +13,6 @@
          "cos.rkt"
          "automatic-simplify.rkt"
          "separate-sin-cos.rkt"
-         "expand-main-op.rkt"
          "algebraic-expand.rkt")
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

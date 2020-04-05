@@ -9,7 +9,6 @@
          "arithmetic.rkt"
          "numerator.rkt"
          "denominator.rkt"
-         "sqrt.rkt"
          "misc.rkt")
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

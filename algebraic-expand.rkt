@@ -6,9 +6,7 @@
 
 (require "misc.rkt"
          "arithmetic.rkt"
-         "automatic-simplify.rkt"
-         "expand-product.rkt"
-         "expand-power.rkt")
+         "automatic-simplify.rkt")
 
 (define (algebraic-expand u)
   (cond ( (sum? u)

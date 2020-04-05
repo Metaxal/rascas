@@ -7,8 +7,7 @@
 (require "misc.rkt"
          "arithmetic.rkt"
          "sin.rkt"
-         "cos.rkt"
-         "expand-main-op.rkt")
+         "cos.rkt")
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
