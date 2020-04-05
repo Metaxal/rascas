@@ -7,7 +7,8 @@
          racket/match
          (prefix-in rkt: (only-in racket/base + * expt abs / exp sqrt))
          (prefix-in rkt: (only-in racket/math sgn))
-         (prefix-in rkt: (only-in math/number-theory factorial)))
+         (prefix-in rkt: (only-in math/number-theory factorial))
+         racket/list)
 
 (provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn exp !
          simplify-sum
@@ -302,6 +303,7 @@
 
 (define (simplify-sum u)
   (match u
+    [`(+) 0]
     [`(+ ,x) x]
     [`(+ . ,elts)
      (match (simplify-sum-rec elts)
@@ -397,7 +399,7 @@
     u))
 
 (define (contract-exp-rules u)
-  #;(match (expand-main-op u)
+  (match (expand-main-op u)
     [`(^ (exp ,a) ,s)
      (define p (* a s))
      (if (or (product? p)
@@ -411,54 +413,8 @@
             (exp (apply + (map second vs-exp)))
             vs-other)]
     [`(+ . ,vs)
-     (apply + (map (contract-exp-rules vs)))]
-    [else u])
-  
-
-  (let ((v (expand-main-op u)))
-
-    (cond ( (power? v)
-
-            (let ((b (list-ref v 1))
-                  (s (list-ref v 2)))
-
-              (if (exp? b)
-                  (let ((p (* (list-ref b 1) s)))
-                    (if (or (product? p)
-                            (power? p))
-                        (exp (contract-exp-rules p))
-                        (exp p)))
-                  v)) )
-
-          ( (product? v)
-
-            (let ((p 1)
-                  (s 0))
-
-              (for-each
-               (lambda (y)
-                 (if (exp? y)
-                     (set! s (+ s (list-ref y 1)))
-                     (set! p (* p y))))
-               (cdr v))
-
-              (* (exp s) p)) )
-
-          ( (sum? v)
-
-            (let ((s 0))
-
-              (for-each
-               (lambda (y)
-                 (if (or (product? y)
-                         (power?   y))
-                     (set! s (+ s (contract-exp-rules y)))
-                     (set! s (+ s y))))
-               (cdr v))
-
-              s) )
-
-          ( else v ))))
+     (apply + (map contract-exp-rules vs))]
+    [else u]))
 
 (define (contract-exp u)
   (if (list? u)
