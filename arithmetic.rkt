@@ -10,7 +10,8 @@
          (prefix-in rkt: (only-in math/number-theory factorial))
          racket/list)
 
-(provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn exp ! log
+(provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn
+         exp log ! (rename-out [^ factorial]) 
          simplify-sum
          simplify-difference
          simplify-product
