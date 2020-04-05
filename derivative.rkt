@@ -13,6 +13,7 @@
 (define (derivative u x)
   (cond
     [(equal? u x) 1]
+    [(free? u x) 0] ; check early to simplify early
     [else
      (match u
        [`(sgn ,_) 0] ; actually undefined for x=0(!)
@@ -43,7 +44,6 @@
         (* (- (sin v)) (derivative v x))]
        [`(tan ,v)
         (* (^ `(sec ,v) 2) (derivative v x))]
-       [(? (free-of? x)) 0]
        [else `(derivative ,u ,x)])]))
 
 (module+ test
