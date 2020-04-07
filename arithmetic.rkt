@@ -374,18 +374,12 @@
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (exp u)
-  (cond
-    [(and (number? u)
-          (let ([r (rkt:exp u)])
-            (and
-             (or (inexact? u)
-                 (exact? r))
-             r)))]
-    [else
-     (match u
-       [`(log ,v) v]
-       ; todo: what if product or a sum with a log in the middle?
-       [else `(exp ,u)])]))
+  (or
+   (try-apply-number rkt:exp u)
+   (match u
+     [`(log ,v) v]
+     ; todo: what if product or a sum with a log in the middle?
+     [else `(exp ,u)])))
 
 (module+ test
   (check-equal? (exp 0) 1)
@@ -462,14 +456,9 @@
   (case-lambda
     [(u)
      (or
-       ; TODO: This case occurs for many functions. Generalize it?
-      (and (number? u)
-           (let ([r (rkt:log u)])
-             (and
-              (or (inexact? u)
-                  (exact? r))
-              r)))
+      (try-apply-number rkt:log u)
       (match u
+        [`(* . ,vs) (apply + (map log vs))]
         [`(exp ,v) v]
         [`(^ ,v ,w) (* w (log v))]
         [else `(log ,u)]))]
@@ -486,4 +475,5 @@
   (check-equal? (log (exp 2)) 2)
   (check-equal? (log (exp 'x)) 'x)
   (check-equal? (log (^ 2 'x) 2) 'x)
-  (check-equal? (log (^ 'a 'x) 'a) 'x))
+  (check-equal? (log (^ 'a 'x) 'a) 'x)
+  (check-equal? (log (* 3 'x)) (+ (log 3) (log 'x))))

@@ -4,7 +4,8 @@
 
 (require racket/match)
 
-(provide exact-number? inexact-number? even-number?
+(provide try-apply-number
+         exact-number? inexact-number? even-number?
          product? quotient? sum? difference? power? factorial? function?
          exp?
          log?
@@ -57,6 +58,25 @@
   (check-equal? (mod -253/7 -12/13) 71/91)
   (check-equal? (mod -253/7 -27/13) 113/91)
   )
+
+;; Useful to define functions:
+;; If f is a racket function, try to apply f to x with result r.
+;; If both x and r are exact, or if x is inexact, return r,
+;; otherwise return #f. (inexactness is contagious.)
+(define (try-apply-number f x)
+  (and (number? x)
+    (let ([r (f x)])
+      (and (or (inexact? x)
+               (exact? r))
+           r))))
+
+(module+ test
+  (check-equal? (try-apply-number + 1) 1)
+  (check-equal? (try-apply-number + 1.) 1.)
+  (check-equal? (try-apply-number exp 0) 1)
+  (check-equal? (try-apply-number exp 1) #f)
+  (check-equal? (try-apply-number + 'x) #f)
+  (check-equal? (try-apply-number + '(+ 3 2)) #f))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
