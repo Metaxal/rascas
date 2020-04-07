@@ -73,14 +73,18 @@
 (define (sgn u)
   (match u
     [(? number?) (rkt:sgn u)]
-    [`(sgn ,v) `(sgn , v)]
+    [`(sgn ,v) (sgn v)] ; remove one level and try again
     [else `(sgn ,u)]))
 
 (module+ test
   (check-equal? (sgn 0) 0)
   (check-equal? (sgn 0.) 0.)
+  (check-equal? (sgn 3) 1)
+  (check-equal? (sgn 3.) 1.)
+  (check-equal? (sgn -3) -1)
   (check-equal? (sgn 'x) '(sgn x))
   (check-equal? (sgn (sgn 'x)) (sgn 'x))
+  (check-equal? (sgn (sgn (sgn 'x))) (sgn 'x))
   (check-equal? (sgn (abs 'x)) (sgn (abs 'x)))) ; 0 or 1.
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -457,25 +461,29 @@
 (define log
   (case-lambda
     [(u)
-     (cond
+     (or
        ; TODO: This case occurs for many functions. Generalize it?
-       [(and (number? u)
-             (let ([r (rkt:log u)])
-               (and
-                (or (inexact? u)
-                    (exact? r))
-                r)))]
-       [(exp? u) (list-ref u 1)]
-       [else `(log ,u)])]
+      (and (number? u)
+           (let ([r (rkt:log u)])
+             (and
+              (or (inexact? u)
+                  (exact? r))
+              r)))
+      (match u
+        [`(exp ,v) v]
+        [`(^ ,v ,w) (* w (log v))]
+        [else `(log ,u)]))]
     [(u v)
-     (cond
-       [(and (number? u) (number? v))
-        (rkt:log u v)]
-       [else `(log ,u ,v)])]))
+     (/ (log u) (log v))]))
 
 (module+ test
   (require rackunit)
   (check-equal? (log 1) 0)
+  (check-equal? (log 0.) -inf.0)
+  (check-equal? (log +inf.0) +inf.0)
   (check-equal? (log 2) '(log 2))
-  #;(check-equal? (log 2 2) 1) ; ERROR
-  (check-equal? (log (exp 2)) 2))
+  (check-equal? (log 2 2) 1)
+  (check-equal? (log (exp 2)) 2)
+  (check-equal? (log (exp 'x)) 'x)
+  (check-equal? (log (^ 2 'x) 2) 'x)
+  (check-equal? (log (^ 'a 'x) 'a) 'x))
