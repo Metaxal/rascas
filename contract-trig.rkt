@@ -13,18 +13,8 @@
          "cos.rkt"
          "automatic-simplify.rkt"
          "separate-sin-cos.rkt"
-         "algebraic-expand.rkt")
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (binomial-coefficient n k)
-  (cond ( (= k 0) 1 )
-        ( (= n k) 1 )
-        ( else
-          (+ (binomial-coefficient (- n 1)
-                                   (- k 1))
-             (binomial-coefficient (- n 1)
-                                   k)) )))
+         "algebraic-expand.rkt"
+         (only-in math/number-theory binomial))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -43,11 +33,11 @@
           (let ((x (list-ref (base u) 1))
                 (n (exponent u)))
             (contract-trig-rules
-             (+ (/ (binomial-coefficient n (/ n 2))
+             (+ (/ (binomial n (/ n 2))
                    (^ 2 n))
                 (* (/ 1 (^ 2 (- n 1)))
                    (sigma (lambda (j)
-                            (* (binomial-coefficient n j)
+                            (* (binomial n j)
                                (cos (* (- n (* 2 j)) x))))
                           0
                           (- (/ n 2) 1)
@@ -61,7 +51,7 @@
             (contract-trig-rules
              (* (/ 1 (^ 2 (- n 1)))
                 (sigma (lambda (j)
-                         (* (binomial-coefficient n j)
+                         (* (binomial n j)
                             (cos (* (- n (* 2 j)) x))))
                        0
                        (floor (/ n 2))
@@ -75,13 +65,13 @@
             (contract-trig-rules
              
              (+ (/ (* (^ -1 n)
-                      (binomial-coefficient n (/ n 2)))
+                      (binomial n (/ n 2)))
                    (^ 2 n))
                 (* (/ (^ -1 (/ n 2))
                       (^ 2 (- n 1)))
                    (sigma (lambda (j)
                             (* (^ -1 j)
-                               (binomial-coefficient n j)
+                               (binomial n j)
                                (cos (* (- n (* 2 j)) x))))
                           0
                           (- (/ n 2) 1)
@@ -96,7 +86,7 @@
              (* (/ (^ -1 (/ (- n 1) 2))
                    (^ 2 (- n 1)))
                (sigma (lambda (j)
-                        (* (binomial-coefficient n j)
+                        (* (binomial n j)
                            (^ -1 j)
                            (sin (* (- n (* 2 j)) x))))
                       0
