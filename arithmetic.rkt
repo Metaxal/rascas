@@ -437,7 +437,9 @@
     [`(/ ,x . ,ys)
      (define y (apply * ys))
      (if (and (number? x) (number? y))
-       (rkt:/ x y)
+       (if (and (zero? x) (zero? y))
+         +nan.0 ; override racket's default
+         (rkt:/ x y))
        (* x (^ y -1)))]))
 
 (define /
@@ -448,6 +450,9 @@
 
 (module+ test
   (require rackunit)
+  (check-equal? (/ 0 0.) +nan.0)
+  (check-equal? (/ 0. 0) +nan.0)
+  (check-equal? (/ -0. 0.) +nan.0)
   (check-equal? (/ 0. 1.) 0.)
   (check-equal? (/ 0 1.) 0)
   (check-equal? (/ 1. 1.) 1.)
