@@ -5,6 +5,7 @@
 (require "misc.rkt"
          "order-relation.rkt"
          racket/match
+         (only-in racket/math nan? infinite?)
          (prefix-in rkt: (only-in racket/base + * expt abs / exp sqrt log))
          (prefix-in rkt: (only-in racket/math sgn))
          (prefix-in rkt: (only-in math/number-theory factorial))
@@ -106,37 +107,39 @@
     (^ base expo)))
 
 (define (^ v w)
-  (match (list v w)
-    [(list 0 0) +nan.0] ; undefined
-    [(list 0 _) 0] ; lim_{x->0} 0^x = 0 
-    [(list 1 _) 1] ; lim_{x->0} 1^x = 1
-    [(list _ 0) 1] ; lim_{x->0} x^0 = 1
-    [(list _ 1) v]
-    [(list (? exact-number?) (? exact-number?))
-     (define z (rkt:expt v w))
-     (if (exact? z)
+  (if (or (nan-number? v) (nan-number? w))
+    +nan.0
+    (match (list v w)
+      [(list 0 (? nonpositive-number?)) +nan.0] ; undefined
+      [(list 0 _) 0] ; lim_{x->0} 0^x = 0 
+      [(list 1 _) 1] ; lim_{x->0} 1^x = 1
+      [(list _ 0) 1] ; lim_{x->0} x^0 = 1
+      [(list _ 1) v]
+      [(list (? exact-number?) (? exact-number?))
+       (define z (rkt:expt v w))
+       (if (exact? z)
          z ; reducing is fine
          `(^ ,v ,w))] ; don't reduce. Ex: (^ 2 1/2)
-    [(list (? number?) (? number?)) ; one is inexact
-     (rkt:expt v w)]
-    [(list `(abs ,x) (? even-number? w))
-     (^ x w)]
-    [(list `(sgn ,x) (? even-number? w))
-     1]
-    [(list `(exp ,a) w)
-     (exp (* a w))]
-    [(list `(^ ,r ,s) w)
-     (cond [(even-number? s)
-            (^ (abs r) (* s w))]
-           [(or (number? s)
-                (number? w))
-            (^ r (* s w))]
-           [else
-            `(^ (^ ,r ,s) ,w)
-            ])]
-    [(list `(* . ,vs)  (? number?)) ; not if w not a number?
-     (apply * (map (raise-to w) vs))]
-    [else `(^ ,v ,w)]))
+      [(list (? number?) (? number?)) ; one is inexact
+       (rkt:expt v w)]
+      [(list `(abs ,x) (? even-number? w))
+       (^ x w)]
+      [(list `(sgn ,x) (? even-number? w))
+       1]
+      [(list `(exp ,a) w)
+       (exp (* a w))]
+      [(list `(^ ,r ,s) w)
+       (cond [(even-number? s)
+              (^ (abs r) (* s w))]
+             [(or (number? s)
+                  (number? w))
+              (^ r (* s w))]
+             [else
+              `(^ (^ ,r ,s) ,w)
+              ])]
+      [(list `(* . ,vs)  (? number?)) ; not if w not a number?
+       (apply * (map (raise-to w) vs))]
+      [else `(^ ,v ,w)])))
 
 (register-simple-function '^ ^)
 
@@ -148,6 +151,8 @@
   ; Checked with maxima for the harder cases
   (check-equal? (^ 'a 1) 'a)
   (check-equal? (^ 0 0) +nan.0)
+  (check-equal? (^ 0 -0.2) +nan.0)
+  (check-equal? (^ 0 -2) +nan.0)
   (check-equal? (^ 'a 0) 1) ; WARNING: only for a≠0
   (check-equal? (^ 'a 2) '(^ a 2))
   (check-equal? (^ 'a -4) '(^ a -4))
@@ -256,15 +261,79 @@
     [`(,x . ,xs)
      (merge-products (list x) (simplify-product-rec xs))]))
 
+;; Returns one of the absorbing elements 0, 0.0, -0.0, +nan.0, +inf.0, -inf.0.
+;; +nan.0 is contagious,
+;; zero and infinite make +nan.0,
+;; otherwise we follow racket's defaults.
+;; Racket's default is that 0*+inf.0 = 0, which I consider a suprising and risky result.
+;; Although I understand the logic, I prefer to return +nan.0 for safety.
+(define (absorb-product elts)
+  (let loop ([elts elts] [res #f])
+    (if (empty? elts)
+      res
+      (let ([x (first elts)])
+        (cond [(not (real? x)) ; +inf.0 and +nan.0 are reals(!)
+               (loop (rest elts) res)]
+              [(nan? x)
+               +nan.0]
+              [(and (not (infinite? x)) (not (zero? x)))
+               (loop (rest elts) res)]
+              [(not res)
+               (loop (rest elts) x)]
+              ; override some of racket's defaults
+              [(and (infinite? res) (zero? x))
+               +nan.0]
+              [(and (zero? res) (infinite? x))
+               +nan.0]
+              [else
+               ; otherwise use racket's default
+               (define new-res (if res (rkt:* res x) x))
+               (if (nan? new-res)
+                 +nan.0
+                 (loop (rest elts) new-res))])))))
+
+(module+ test
+  (check-equal? (absorb-product '(1 2))
+                #f)
+  (check-equal? (absorb-product '())
+                #f)
+  (check-equal? (absorb-product '(a b c))
+                #f)
+  (check-equal? (absorb-product '(a b 0))
+                0)
+  (check-equal? (absorb-product '(a +inf.0 b 0))
+                +nan.0)
+  (check-equal? (absorb-product '(a b 0. 0 c))
+                0)
+  (check-equal? (absorb-product '(a b 0. -0.0 -0.0 0 c))
+                0)
+  (check-equal? (absorb-product '(a b 0. -0.0 -0.0 c))
+                0.)
+  (check-equal? (absorb-product '(a b 0. -0.0 c))
+                -0.0)
+  (check-equal? (absorb-product '(a b 0. 0 -0.0 c +inf.0))
+                +nan.0)
+  (check-equal? (absorb-product '(a -inf.0 b -inf.0 c))
+                +inf.0)
+  (check-equal? (absorb-product '(a -inf.0 b +inf.0 c))
+                -inf.0)
+  (check-equal? (absorb-product '(a 0 b +inf.0 c))
+                +nan.0)
+  (check-equal? (absorb-product '(a -0.0 b -inf.0 c))
+                +nan.0)
+  )
+
 (define (simplify-product u)
   (match u
     [`(* ,x) x]
-    [`(* . ,(? any-are-zero?)) 0]
     [`(* . ,elts)
-     (match (simplify-product-rec elts)
-       ['() 1]
-       [(list x) x]
-       [xs `(* ,@xs)])]))
+     (cond
+       [(absorb-product elts)] ; return nan, 0, 0., +inf.0 or -inf.0 or skip to next clause.
+       [else
+        (match (simplify-product-rec elts)
+          ['() 1]
+          [(list x) x]
+          [xs `(* ,@xs)])])]))
 
 (define (* . elts)
   (simplify-product `(* ,@elts)))
@@ -282,6 +351,12 @@
                (expand-product (- r f) s))) )
         ( (sum? s) (expand-product s r) )
         ( else (* r s) )))
+
+(module+ test
+  (check-equal? (* 0 +inf.0) +nan.0)
+  (check-equal? (* 1 +nan.0) +nan.0)
+  (check-equal? (* 1 +nan.0) +nan.0)
+  )
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; +

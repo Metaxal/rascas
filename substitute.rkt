@@ -72,5 +72,15 @@
              [(list? u) (automatic-simplify (map loop u))]
              [else u]))]))
 
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(module+ test
+  (require rackunit
+           "arithmetic.rkt")
+  (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x 0)
+                +nan.0)
+  (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x 0.)
+                +nan.0)
+  (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x +inf.0)
+                +inf.0)
+  (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x -inf.0)
+                -inf.0))
 

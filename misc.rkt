@@ -3,13 +3,19 @@
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
 (require racket/list
-         racket/match)
+         racket/match
+         racket/math)
 
 (provide pi
          try-apply-number
          define-simple-function
          register-simple-function
          symbol->function
+         zero-number?
+         nan-number?
+         infinite-number?
+         nonpositive-number?
+         nonnegative-number?
          exact-number?
          inexact-number?
          even-number?
@@ -30,6 +36,26 @@
   (require rackunit))
 
 (define pi 'pi)
+
+(define (nan-number? x)
+  (and (real? x)
+       (nan? x)))
+
+(define (zero-number? x)
+  (and (real? x)
+       (zero? x)))
+
+(define (infinite-number? x)
+  (and (real? x)
+       (infinite? x)))
+
+(define (nonnegative-number? x)
+  (and (number? x)
+       (>= x 0)))
+
+(define (nonpositive-number? x)
+  (and (number? x)
+       (<= x 0)))
 
 (define (exact-number? x)
   (and (number? x)

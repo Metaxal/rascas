@@ -91,3 +91,25 @@
    '(+ (* (^ u -1) w)
        (* (^ u -1) v x)
        (^ x 2))))
+
+; Strange output. It looks like lexicographical from the end, and not placing lists last.
+#;
+(distribute '(* (+ 1 a) (+ 1 b) (+ 1 c) (+ 1 d)) '* '+)
+#;
+'(+
+  1
+  a
+  b
+  (* a b)
+  c
+  (* a c)
+  (* b c)
+  (* a b c)
+  d
+  (* a d)
+  (* b d)
+  (* a b d)
+  (* c d)
+  (* a c d)
+  (* b c d)
+  (* a b c d))
