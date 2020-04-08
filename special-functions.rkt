@@ -4,7 +4,8 @@
          "arithmetic.rkt"
          (prefix-in rkt: math/special-functions))
 
-(provide gamma)
+(provide gamma psi0 erf erfc lambert lambert- zeta eta
+         Fresnel-S Fresnel-C Fresnel-RS Fresnel-RC)
 
 ;; TODO: a mechanism to add matchers for different functions,
 ;; for example (+ (^ (cos x) 2) (^ (sin x) 2) reduce to 1.
