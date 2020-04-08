@@ -20,27 +20,18 @@
   (let loop ([u u])
     (if (list? u)
       (let ([v (map loop u)])
-        ;; TODO: All operators should follow the logic
-        ;; (apply op (cdr v))
-        ;; instead of relying on simplify-* functions
-        ;; (that is, the operators should be forced to
-        ;; do the simplifications)
-        ;; Provide a 'plugin' mechanism to add user-custom ops.
         (case (car v)
           [(^) (simplify-power      v)]
           [(*) (simplify-product    v)]
           [(+) (simplify-sum        v)]
-          [(/) (simplify-quotient   v)] ; should not appear
-          [(-) (simplify-difference v)] ; should not appear
+          [(/) (simplify-quotient   v)] ; should not appear as / is reduced to ^-1
+          [(-) (simplify-difference v)] ; should not appear as - is reduced to * -1
           [(!) (simplify-factorial  v)]
-          [(sqr)  (apply sqrt (cdr v))]
-          [(sqrt) (apply sqrt (cdr v))]
-          [(exp)  (apply exp (cdr v))]
-          [(log)  (apply log (cdr v))]
-          [(sin)  (apply sin (cdr v))]
-          [(cos)  (apply cos (cdr v))]
-          [(tan)  (apply tan (cdr v))]
-          [else v]
+          [else
+           (cond [(symbol->function (car v))
+                  =>
+                  (λ (fun) (apply fun (cdr v)))]
+                 [else v])]
           ))
       (if inexact?
         (cond

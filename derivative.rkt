@@ -60,7 +60,7 @@
        [`(tan ,v)
         (* (^ `(sec ,v) 2) (derivative v x))]
 
-       [`(Γ ,v)]
+       #;[`(gamma ,v)]
        ; unknown function symbols
        [else `(derivative ,u ,x)])]))
 

@@ -147,3 +147,4 @@
 
 (define (sin x)
   (simplify-sin `(sin ,x)))
+(register-simple-function 'sin sin)

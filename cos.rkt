@@ -143,4 +143,4 @@
 
 (define (cos x)
   (simplify-cos `(cos ,x)))
-
+(register-simple-function 'cos cos)

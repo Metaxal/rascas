@@ -171,13 +171,10 @@
                         (+ k 1)))))))
       (^ u n)))
 
-
 (define (sqrt x)
-  (if (and (number? x)
-           (or (inexact? x) ; floats propagate
-               (exact? (rkt:sqrt x))))
-      (rkt:sqrt x)
+  (or (try-apply-number rkt:sqrt x)
       (^ x 1/2)))
+(register-simple-function 'sqrt sqrt)
 
 (module+ test
   (require rackunit)
@@ -198,6 +195,7 @@
 
 (define (! n)
   (simplify-factorial `(! ,n)))
+(register-simple-function `! !)
   
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; *
@@ -258,7 +256,8 @@
   (simplify-product `(* ,@elts)))
 
 (define (sqr x)
-  (* x x))
+  (^ x 2))
+(register-simple-function 'sqr sqr)
 
 
 (define (expand-product r s)
@@ -380,6 +379,7 @@
      [`(log ,v) v]
      ; todo: what if product or a sum with a log in the middle?
      [else `(exp ,u)])))
+(register-simple-function 'exp exp)
 
 (module+ test
   (check-equal? (exp 0) 1)
@@ -461,9 +461,16 @@
         [`(* . ,vs) (apply + (map log vs))]
         [`(exp ,v) v]
         [`(^ ,v ,w) (* w (log v))]
+        #;[`(gamma ,v)
+           ; This can't work, because (gamma v) is reduced even before
+           ; the log has a chance to catch it.
+           ; also, ideally, this should be defined with gamma in special-functions.rkt
+           (or (try-apply-number log-gamma v)
+               `(log (gamma ,v)))]
         [else `(log ,u)]))]
     [(u v)
      (/ (log u) (log v))]))
+(register-simple-function 'log log)
 
 (module+ test
   (require rackunit)

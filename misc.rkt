@@ -5,6 +5,8 @@
 (require racket/match)
 
 (provide try-apply-number
+         define-simple-function
+         register-simple-function symbol->function
          exact-number? inexact-number? even-number?
          product? quotient? sum? difference? power? factorial? function?
          exp?
@@ -77,6 +79,31 @@
   (check-equal? (try-apply-number exp 1) #f)
   (check-equal? (try-apply-number + 'x) #f)
   (check-equal? (try-apply-number + '(+ 3 2)) #f))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; For functions of 1 argument
+;;; A function registered here allows to be used by automatic-simplify
+;;; and ->inexact.
+;;; Functions like cos, sqr, gamma fit the bill.
+
+(define-syntax-rule (define-simple-function name rkt)
+  (begin
+    (define (name v)
+      (or (try-apply-number rkt v)
+          `(name ,v)))
+    (register-simple-function 'name name)))
+
+(define function-dict (make-hasheq))
+
+(define (register-simple-function sym fun)
+  (if (hash-has-key? function-dict sym)
+    (error "function symbol already defined" sym)
+    (hash-set! function-dict sym fun)))
+
+(define (symbol->function sym)
+  (hash-ref function-dict sym #f))
+
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
