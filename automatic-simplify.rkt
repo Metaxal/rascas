@@ -7,10 +7,7 @@
 
 (require "misc.rkt"
          "arithmetic.rkt"
-         "sin.rkt"
-         "cos.rkt"
-         "tan.rkt"
-         (prefix-in rkt: (only-in math/base euler.0))
+         #;(prefix-in rkt: (only-in math/base euler.0))
          (prefix-in rkt: (only-in racket/math pi)))
 
 (module+ test
@@ -38,7 +35,7 @@
           [(number? u) (exact->inexact u)]
           [(symbol? u)
            (case u
-             [(π pi) rkt:pi]
+             [(pi) rkt:pi]
              [else u])]
           [else u])
         u))))
