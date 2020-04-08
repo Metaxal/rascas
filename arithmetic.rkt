@@ -53,14 +53,21 @@
 (define (abs u)
   (match u
     [`(abs ,a) u]
+    [`(^ ,a ,(? even-number? b))
+     `(^ ,a ,b)]
     [(? number?) (rkt:abs u)]
     [else `(abs ,u)]))
+(register-simple-function 'abs abs)
 
 (module+ test
   (check-equal? (abs (abs 'x))
                 '(abs x))
+  (check-equal? (abs (abs (abs 'x)))
+                '(abs x))
   (check-equal? (abs -3)
                 3)
+  (check-equal? (abs (* 'x 'x))
+                '(^ x 2))
   (check-equal? (abs -3.2)
                 3.2)
   (check-equal? (abs 'x)
@@ -75,6 +82,7 @@
     [(? number?) (rkt:sgn u)]
     [`(sgn ,v) (sgn v)] ; remove one level and try again
     [else `(sgn ,u)]))
+(register-simple-function 'sgn sgn)
 
 (module+ test
   (check-equal? (sgn 0) 0)
@@ -85,7 +93,9 @@
   (check-equal? (sgn 'x) '(sgn x))
   (check-equal? (sgn (sgn 'x)) (sgn 'x))
   (check-equal? (sgn (sgn (sgn 'x))) (sgn 'x))
-  (check-equal? (sgn (abs 'x)) (sgn (abs 'x)))) ; 0 or 1.
+  (check-equal? (sgn (abs 'x)) (sgn (abs 'x))) ; 0 or 1 (DiracDelta function)
+  #;(check-equal? (* (sgn 'x) 'x) (abs 'x)) ; not checked for now
+  )
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ^
@@ -111,6 +121,8 @@
      (rkt:expt v w)]
     [(list `(abs ,x) (? even-number? w))
      (^ x w)]
+    [(list `(sgn ,x) (? even-number? w))
+     1]
     [(list `(exp ,a) w)
      (exp (* a w))]
     [(list `(^ ,r ,s) w)
@@ -125,6 +137,8 @@
     [(list `(* . ,vs)  (? number?)) ; not if w not a number?
      (apply * (map (raise-to w) vs))]
     [else `(^ ,v ,w)]))
+
+(register-simple-function '^ ^)
 
 (define simplify-power
   (match-lambda
@@ -254,6 +268,7 @@
 
 (define (* . elts)
   (simplify-product `(* ,@elts)))
+(register-simple-function '* *)
 
 (define (sqr x)
   (^ x 2))
@@ -317,6 +332,7 @@
 
 (define (+ . elts)
   (simplify-sum `(+ ,@elts)))
+(register-simple-function '+ +)
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; -
@@ -334,7 +350,8 @@
   (check-equal? (- 1 2 3) -4)
   (check-equal? (- 5) -5)
   (check-equal? (- 'x) (* -1 'x))
-  (check-equal? (- 'x 'y 'z) (+ 'x (* -1 (+ 'y 'z))))) 
+  (check-equal? (- 'x 'y 'z) (+ 'x (* -1 (+ 'y 'z)))))
+(register-simple-function '- -)
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; /
@@ -352,6 +369,7 @@
   (case-lambda
     [(u) (simplify-quotient `(/ 1 ,u))]
     [(u . vs) (simplify-quotient `(/ ,u . ,vs))]))
+(register-simple-function '/ /)
 
 (module+ test
   (require rackunit)
@@ -495,4 +513,12 @@
   #;(substitute (log (^ 'x 'a)) 'a 2)
   ; but we also cannot write
   ;(log (^ x a)) -> (* a (log (abs x)))
+  ; Actually, maxima does not simplify when defining functions:
+  #|
+(%i49) f(x,a) := log(x^a);
+                                              a
+(%o49)                        f(x, a) := log(x )
+(%i50) f(-2, 2);
+(%o50)                              log(4)
+|#
   )

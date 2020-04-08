@@ -2,13 +2,18 @@
 
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
-(require racket/match)
+(require racket/list
+         racket/match)
 
 (provide pi
          try-apply-number
          define-simple-function
-         register-simple-function symbol->function
-         exact-number? inexact-number? even-number?
+         register-simple-function
+         symbol->function
+         exact-number?
+         inexact-number?
+         even-number?
+         nonempty-list?
          product? quotient? sum? difference? power? factorial? function?
          exp?
          log?
@@ -18,7 +23,6 @@
          vars
          base
          exponent
-         inexact-number?
          mod
          while)
 
@@ -36,9 +40,13 @@
        (inexact? x)))
 
 (define (even-number? x)
-  (and (integer? x)
+  (and (integer? x) ; may not be exact
        (even? x)))
 
+(define (nonempty-list? l)
+  ; pair? would do almost the same job though.
+  (and (list? l)
+       (not (empty? l))))
 
 ;; Racket's `modulo' takes only integers and behaves differently.
 (define (mod x n)
@@ -99,6 +107,7 @@
 
 (define function-dict (make-hasheq))
 
+;; TODO: Rename to 'register-function'.
 (define (register-simple-function sym fun)
   (if (hash-has-key? function-dict sym)
     (error "function symbol already defined" sym)
