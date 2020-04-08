@@ -460,7 +460,9 @@
       (match u
         [`(* . ,vs) (apply + (map log vs))]
         [`(exp ,v) v]
-        [`(^ ,v ,w) (* w (log v))]
+        [`(^ ,v ,w)
+         ; That's what maxima does, but this is a little incorrect (see tests)
+         (* w (log v))]
         #;[`(gamma ,v)
            ; This can't work, because (gamma v) is reduced even before
            ; the log has a chance to catch it.
@@ -483,4 +485,14 @@
   (check-equal? (log (exp 'x)) 'x)
   (check-equal? (log (^ 2 'x) 2) 'x)
   (check-equal? (log (^ 'a 'x) 'a) 'x)
-  (check-equal? (log (* 3 'x)) (+ (log 3) (log 'x))))
+  (check-equal? (log (* 3 'x)) (+ (log 3) (log 'x)))
+
+  ; Some annoying cases:
+  ; (log (sqr x)) is defined for all x, but not (* 2 (log x))
+  ; So should we write:
+  #;(check-equal? (log (sqr 'x)) (* 2 (log (abs 'x))))
+  ; then what about
+  #;(substitute (log (^ 'x 'a)) 'a 2)
+  ; but we also cannot write
+  ;(log (^ x a)) -> (* a (log (abs x)))
+  )

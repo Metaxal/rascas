@@ -4,7 +4,7 @@
 
 (provide denominator)
 
-(require (rename-in (only-in racket/base denominator) (denominator rkt:denominator))
+(require (prefix-in rkt: (only-in racket/base denominator))
          racket/match
          "arithmetic.rkt")
 

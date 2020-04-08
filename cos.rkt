@@ -77,8 +77,7 @@
 
 (define (n/2*pi? elt)
   (define (n/2? x)
-    (and (number? x)
-         (exact? x)
+    (and (exact-number? x)
          (equal? (denominator x) 2)))
   (match elt
     [`(* ,(? n/2?) pi) #t]
@@ -94,53 +93,49 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (simplify-cos u)
+(define (cos u)
+  (or
+   (try-apply-number rkt:cos u)
+   (match u
+     ['pi -1]
+     [(? (λ(n) (and (number? n)
+                    (negative? n)))
+         n)
+      (cos (- n))]
 
-  (match u
-
-    ['(cos 0) 1]
-
-    ['(cos pi) -1]
-
-    [`(cos ,(? inexact-number? n)) (rkt:cos n)]
-
-    [`(cos ,(? (λ(n)(and (number? n)
+     [`(* ,(? (λ(n) (and (number? n)
                          (negative? n)))
-               n))
-     (cos (- n))]
+              n)
+          . ,elts)
+      (cos (apply * (- n) elts))]
 
-    [`(cos (* ,(? (λ(n)(and (number? n)
-                            (negative? n)))
-                  n)
-              . ,elts))
-     (cos (apply * (append (list -1 n) elts)))]
+     [`(* ,(? (λ(a/b) (and (exact-number? a/b)
+                           (> a/b 1/2)))
+              a/b)
+          pi)
+      (simplify-cos-first-quadrant a/b)]
 
-    [`(cos (* ,(? (λ(a/b)(and (number? a/b)
-                              (exact? a/b)
-                              (> a/b 1/2)))
-                  a/b)
-              pi))
-     (simplify-cos-first-quadrant a/b)]
+     [`(* ,(? (λ(k/n)
+                (and (member (denominator k/n) '(1 2 3 4 6))
+                     (integer? (numerator k/n))))
+              k/n)
+          pi)
+      (simplify-cos-k/n*pi k/n)]
 
-    [`(cos (* ,(? (λ(k/n)
-                    (and (member (denominator k/n) '(1 2 3 4 6))
-                         (integer? (numerator k/n))))
-                  k/n)
-              pi))
-     (simplify-cos-k/n*pi k/n)]
+     [`(+ . ,(? (λ(elts) (findf n*pi? elts))
+                elts))
+      (simplify-cos-sum-with-pi elts)]
 
-    [`(cos (+ . ,(? (λ(elts)(findf n*pi? elts))
-                    elts)))
-     (simplify-cos-sum-with-pi elts)]
+     [`(+ . ,(? (λ(elts) (findf n/2*pi? elts))
+                elts))
+      (simplify-cos-sum-with-n/2*pi elts)]
 
-    [`(cos (+ . ,(? (λ(elts)(findf n/2*pi? elts))
-                    elts)))
-     (simplify-cos-sum-with-n/2*pi elts)]
-
-    [else u]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (cos x)
-  (simplify-cos `(cos ,x)))
+     [else `(cos ,u)])))
 (register-simple-function 'cos cos)
+
+(module+ test
+  (require rackunit
+           "automatic-simplify.rkt")
+  (check-false (number? (cos 1/6)))
+  (check-true (number? (->inexact (cos 1/6)))))
+

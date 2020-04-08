@@ -7,9 +7,7 @@
 (require "misc.rkt"
          "arithmetic.rkt"
          "contains.rkt"
-         "sin.rkt"
-         "cos.rkt"
-         "tan.rkt"
+         "trig-functions.rkt"
          racket/list
          racket/match)
         

@@ -13,10 +13,6 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define pi 'pi)
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (define (simplify-sin-first-quadrant a/b)
 
   (cond ( (> a/b 2)
@@ -102,49 +98,40 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (simplify-sin u)
+(define (sin u)
+  (or
+   (try-apply-number rkt:sin u)
+   (match u
+     ['pi 0]
 
-  (match u
-
-    ['(sin 0) 0]
-
-    ['(sin pi) 0]
-
-    [`(sin ,(? inexact-number? n)) (rkt:sin n)]
-
-    [`(sin ,(? (λ(n)(and (number? n)
-                              (negative? n)))
-                    n))
+     [(? (λ(n)(and (number? n)
+                   (negative? n)))
+         n)
       (- (sin (* -1 n)))]
 
-    [`(sin (* ,(? (λ(n)(and (number? n)
-                                 (negative? n)))
-                       n) . ,elts))
-      (- (sin (apply * (append (list -1 n) elts))))]
+     [`(* ,(? (λ(n)(and (number? n)
+                        (negative? n)))
+              n) . ,elts)
+      (- (sin (apply * (- n) elts)))]
 
-    [`(sin (* ,(? (λ(a/b)(and (number? a/b)
-                                   (exact? a/b)
-                                   (> a/b 1/2)))
-                       a/b) pi)) 
+     [`(* ,(? (λ(a/b) (and (number? a/b)
+                           (exact? a/b)
+                           (> a/b 1/2)))
+              a/b) pi) 
       (simplify-sin-first-quadrant a/b)]
 
-    [`(sin (* ,(? (λ(k/n)(and (member (denominator k/n) '(1 2 3 4 6))
-                              (integer? (numerator k/n))))
-                  k/n) pi))
+     [`(* ,(? (λ(k/n)(and (member (denominator k/n) '(1 2 3 4 6))
+                          (integer? (numerator k/n))))
+              k/n) pi)
       (simplify-sin-k/n*pi k/n)]
 
-    [`(sin (+ . ,(? (λ(elts)(findf n*pi? elts))
-                    elts)))
+     [`(+ . ,(? (λ(elts)(findf n*pi? elts))
+                elts))
       (simplify-sum-with-pi elts)]
 
-    [`(sin (+ . ,(? (λ(elts)(findf n/2*pi? elts))
-                    elts)))
+     [`(+ . ,(? (λ(elts)(findf n/2*pi? elts))
+                elts))
       (simplify-sin-sum-with-n/2*pi elts)]
 
-    [else u]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (sin x)
-  (simplify-sin `(sin ,x)))
+     [else `(sin ,u)])))
 (register-simple-function 'sin sin)

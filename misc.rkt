@@ -4,7 +4,8 @@
 
 (require racket/match)
 
-(provide try-apply-number
+(provide pi
+         try-apply-number
          define-simple-function
          register-simple-function symbol->function
          exact-number? inexact-number? even-number?
@@ -23,6 +24,8 @@
 
 (module+ test
   (require rackunit))
+
+(define pi 'pi)
 
 (define (exact-number? x)
   (and (number? x)
