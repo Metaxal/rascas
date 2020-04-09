@@ -85,10 +85,6 @@
         ( else (list (sin A)
                      (cos A)) )))
 
-(define (kind u)
-  (and (pair? u)
-       (car u)))
-
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Original version from book
@@ -98,7 +94,7 @@
           (symbol? u))
       u
       (let ((v (map expand-trig u)))
-        (case (kind u)
+        (case (operator-kind u)
           ( (sin) (list-ref (expand-trig-rules (list-ref v 1)) 0) )
           ( (cos) (list-ref (expand-trig-rules (list-ref v 1)) 1) )
           ( else  v )))))

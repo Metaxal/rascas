@@ -20,6 +20,7 @@
          inexact-number?
          even-number?
          nonempty-list?
+         operator-kind
          length<=
          product? quotient? sum? difference? power? factorial? function?
          exp?
@@ -122,6 +123,18 @@
   (check-equal? (mod -253/7 -12/13) 71/91)
   (check-equal? (mod -253/7 -27/13) 113/91)
   )
+
+(define (operator-kind v)
+  (and (pair? v)
+       (let ([x (car v)])
+         (and (symbol? x)
+              x))))
+
+(module+ test
+  (check-equal? (operator-kind '(+ a b c)) '+)
+  (check-equal? (operator-kind '((+ a b c))) #f)
+  (check-equal? (operator-kind '()) #f)
+  (check-equal? (operator-kind 'a) #f))
 
 ;; Useful to define functions:
 ;; If f is a racket function, try to apply f to x with result r.
