@@ -131,7 +131,7 @@
       (simplify-cos-sum-with-n/2*pi elts)]
 
      [else `(cos ,u)])))
-(register-simple-function 'cos cos)
+(register-function 'cos cos)
 
 (module+ test
   (require rackunit

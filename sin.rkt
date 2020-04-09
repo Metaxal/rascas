@@ -134,4 +134,4 @@
       (simplify-sin-sum-with-n/2*pi elts)]
 
      [else `(sin ,u)])))
-(register-simple-function 'sin sin)
+(register-function 'sin sin)

@@ -58,7 +58,7 @@
      `(^ ,a ,b)]
     [(? number?) (rkt:abs u)]
     [else `(abs ,u)]))
-(register-simple-function 'abs abs)
+(register-function 'abs abs)
 
 (module+ test
   (check-equal? (abs (abs 'x))
@@ -83,7 +83,7 @@
     [(? number?) (rkt:sgn u)]
     [`(sgn ,v) (sgn v)] ; remove one level and try again
     [else `(sgn ,u)]))
-(register-simple-function 'sgn sgn)
+(register-function 'sgn sgn)
 
 (module+ test
   (check-equal? (sgn 0) 0)
@@ -141,7 +141,7 @@
        (apply * (map (raise-to w) vs))]
       [else `(^ ,v ,w)])))
 
-(register-simple-function '^ ^)
+(register-function '^ ^)
 
 (define simplify-power
   (match-lambda
@@ -193,7 +193,7 @@
 (define (sqrt x)
   (or (try-apply-number rkt:sqrt x)
       (^ x 1/2)))
-(register-simple-function 'sqrt sqrt)
+(register-function 'sqrt sqrt)
 
 (module+ test
   (require rackunit)
@@ -214,7 +214,7 @@
 
 (define (! n)
   (simplify-factorial `(! ,n)))
-(register-simple-function `! !)
+(register-function `! !)
   
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; *
@@ -337,11 +337,11 @@
 
 (define (* . elts)
   (simplify-product `(* ,@elts)))
-(register-simple-function '* *)
+(register-function '* *)
 
 (define (sqr x)
   (^ x 2))
-(register-simple-function 'sqr sqr)
+(register-function 'sqr sqr)
 
 
 (define (expand-product r s)
@@ -407,7 +407,7 @@
 
 (define (+ . elts)
   (simplify-sum `(+ ,@elts)))
-(register-simple-function '+ +)
+(register-function '+ +)
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; -
@@ -426,7 +426,7 @@
   (check-equal? (- 5) -5)
   (check-equal? (- 'x) (* -1 'x))
   (check-equal? (- 'x 'y 'z) (+ 'x (* -1 (+ 'y 'z)))))
-(register-simple-function '- -)
+(register-function '- -)
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; /
@@ -446,7 +446,7 @@
   (case-lambda
     [(u) (simplify-quotient `(/ 1 ,u))]
     [(u . vs) (simplify-quotient `(/ ,u . ,vs))]))
-(register-simple-function '/ /)
+(register-function '/ /)
 
 (module+ test
   (require rackunit)
@@ -477,7 +477,7 @@
      [`(log ,v) v]
      ; todo: what if product or a sum with a log in the middle?
      [else `(exp ,u)])))
-(register-simple-function 'exp exp)
+(register-function 'exp exp)
 
 (module+ test
   (check-equal? (exp 0) 1)
@@ -570,7 +570,7 @@
         [else `(log ,u)]))]
     [(u v)
      (/ (log u) (log v))]))
-(register-simple-function 'log log)
+(register-function 'log log)
 
 (module+ test
   (require rackunit)

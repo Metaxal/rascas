@@ -9,7 +9,7 @@
 (provide pi
          try-apply-number
          define-simple-function
-         register-simple-function
+         register-function
          symbol->function
          zero-number?
          nan-number?
@@ -129,12 +129,15 @@
     (define (name v)
       (or (try-apply-number rkt v)
           `(name ,v)))
-    (register-simple-function 'name name)))
+    (register-function 'name name)))
 
 (define function-dict (make-hasheq))
 
-;; TODO: Rename to 'register-function'.
-(define (register-simple-function sym fun)
+;; Register a function symbol.
+;; When the symbol is encountered in an s-exp and a function such as
+;; automatic-simplify or ->inexact are called, the occurrence of the
+;; symbol in prefix position triggers a call to the function fun.
+(define (register-function sym fun)
   (if (hash-has-key? function-dict sym)
     (error "function symbol already defined" sym)
     (hash-set! function-dict sym fun)))

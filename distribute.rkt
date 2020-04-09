@@ -30,7 +30,7 @@
 
 ;; Recursively distributes `times` over `plus`, where `times` and `plus` are
 ;; two function symbols like '* and '+ and must have been registered with
-;; register-simple-function.
+;; register-function.
 ;; WARNING: This is a dangerous function to call. It can blow up in both space and time.
 (define (distribute u times plus)
   ; (times a (plus b c)) =
