@@ -17,25 +17,16 @@
   (let loop ([u u])
     (if (list? u)
       (let ([v (map loop u)])
-        (case (car v)
-          [(^) (simplify-power      v)]
-          [(*) (simplify-product    v)]
-          [(+) (simplify-sum        v)]
-          [(/) (simplify-quotient   v)] ; should not appear as / is reduced to ^-1
-          [(-) (simplify-difference v)] ; should not appear as - is reduced to * -1
-          [(!) (simplify-factorial  v)]
-          [else
-           (cond [(symbol->function (car v))
-                  =>
-                  (λ (fun) (apply fun (cdr v)))]
-                 [else v])]
-          ))
+        (cond [(symbol->function (car v))
+               =>
+               (λ (fun) (apply fun (cdr v)))]
+              [else v]))
       (if inexact?
         (cond
           [(number? u) (exact->inexact u)]
           [(symbol? u)
            (case u
-             [(pi) rkt:pi]
+             [(pi) rkt:pi] ; inexact number
              [else u])]
           [else u])
         u))))
