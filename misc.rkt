@@ -11,6 +11,9 @@
          define-simple-function
          register-function
          symbol->function
+         no-fun
+         rev-append
+         remove+?
          zero-number?
          nan-number?
          infinite-number?
@@ -71,6 +74,10 @@
   (and (integer? x) ; may not be exact
        (even? x)))
 
+;=============;
+;=== Lists ===;
+;=============;
+
 (define (nonempty-list? l)
   ; pair? would do almost the same job though.
   (and (list? l)
@@ -100,29 +107,45 @@
   (check-equal? (length<= '(a b) 3)
                 #t))
 
-;; Racket's `modulo' takes only integers and behaves differently.
-(define (mod x n)
-  (define nn (abs n))
-  (define z (- x (* nn (floor (/ x nn)))))
-  (if (< z 0)
-      (+ z n)
-      z))
+(define (rev-append l1 l2)
+  (if (null? l1)
+    l2
+    (rev-append (cdr l1) (cons (car l1) l2))))
 
 (module+ test
-  ;; Testing against Chez Scheme 9.5
-  (check-equal? (mod 2 2) 0)
-  (check-equal? (mod 2815 17) 10)
-  (check-equal? (mod 13 3) 1)
-  (check-equal? (mod 17/5 2) 7/5)
-  (check-equal? (mod -17/5 2) 3/5)
-  (check-equal? (mod -153/7 5) 22/7)
-  (check-equal? (mod -153/7 -3) 15/7)
-  (check-equal? (mod -153/7 3) 15/7)
-  (check-equal? (mod 153/7 -3) 6/7)
-  (check-equal? (mod 153/7 -2/5) 9/35)
-  (check-equal? (mod -253/7 -12/13) 71/91)
-  (check-equal? (mod -253/7 -27/13) 113/91)
-  )
+  (require rackunit)
+
+  (check-equal? (rev-append '(a b c) '(1 2 3))
+                '(c b a 1 2 3)))
+
+;; Returns the list l where v has been removed once at most,
+;; and whether v was removed at all.
+(define (remove+? v lin [=? equal?])
+  (let loop ([l lin] [rev-left '()])
+    (if (null? l)
+      ; not removed
+      (values lin #f)
+      (let ([x (car l)])
+        (if (=? x v)
+          (values (rev-append rev-left (cdr l)) #t)
+          (loop (cdr l) (cons (car l) rev-left)))))))
+
+(module+ test
+  (check-equal?
+   (call-with-values
+    (λ () (remove+? 'c '(a b c d) eq?))
+    list)
+   '((a b d) #t))
+  (check-equal?
+   (call-with-values
+    (λ () (remove+? 'e '(a b c d) eq?))
+    list)
+   '((a b c d) #f))
+  (check-equal?
+   (call-with-values
+    (λ () (remove+? '(e f) '(a b c d (e f)) equal?))
+    list)
+   '((a b c d) #t)))
 
 (define (operator-kind v)
   (and (pair? v)
@@ -183,6 +206,41 @@
 (define (symbol->function sym)
   (hash-ref function-dict sym #f))
 
+;; Function that does nothing but cons sym into l
+(define ((no-fun sym) . l)
+  (cons sym l))
+
+(module+ test
+  (check-equal? ((no-fun 'aaa) 'a 'b 'c)
+                '(aaa a b c))
+  (check-equal? ((no-fun 'aaa))
+                '(aaa)))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Racket's `modulo' takes only integers and behaves differently.
+(define (mod x n)
+  (define nn (abs n))
+  (define z (- x (* nn (floor (/ x nn)))))
+  (if (< z 0)
+      (+ z n)
+      z))
+
+(module+ test
+  ;; Testing against Chez Scheme 9.5
+  (check-equal? (mod 2 2) 0)
+  (check-equal? (mod 2815 17) 10)
+  (check-equal? (mod 13 3) 1)
+  (check-equal? (mod 17/5 2) 7/5)
+  (check-equal? (mod -17/5 2) 3/5)
+  (check-equal? (mod -153/7 5) 22/7)
+  (check-equal? (mod -153/7 -3) 15/7)
+  (check-equal? (mod -153/7 3) 15/7)
+  (check-equal? (mod 153/7 -3) 6/7)
+  (check-equal? (mod 153/7 -2/5) 9/35)
+  (check-equal? (mod -253/7 -12/13) 71/91)
+  (check-equal? (mod -253/7 -27/13) 113/91)
+  )
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -257,11 +315,9 @@
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (function? expr)
-  (and (list? expr)
-       (> (length expr) 1)
-       (symbol? (car expr))
-       (not (member (car expr)
-                    '(+ - * / ^ !)))))
+  (define opk (operator-kind expr))
+  (and opk
+       (not (memq opk '(+ - * / ^ !)))))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

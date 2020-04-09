@@ -32,8 +32,6 @@
                 (bloop rbs (cons (cons a b) res)))))))))
   (foldr cp-2 (list (list)) ls))
 
-(define ((no-fun sym) . l)
-  (cons sym l))
 
 ;; Recursively distributes `times` over `plus`, where `times` and `plus` are
 ;; two function symbols like '* and '+ and must have been registered with
@@ -147,3 +145,4 @@
   (* a c d)
   (* b c d)
   (* a b c d))
+
