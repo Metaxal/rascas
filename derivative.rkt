@@ -68,6 +68,11 @@
        ; unknown function symbols
        [else `(derivative ,u ,x)])]))
 
+;; So that an expression that could not be derived earlier can now be.
+;; See tests for an example.
+;; This can also be used to take the derivative after a substitution rather than before.
+(register-function 'derivative derivative)
+
 (module+ test
   (require rackunit
            "automatic-simplify.rkt"
@@ -88,6 +93,20 @@
                 '(* -3 (sin (* 3 x))))
   (check-equal? (derivative (tan (* 3 'x)) 'x)
                 '(* 3 (^ (sec (* 3 x)) 2)))
+
+  ; Check that 'derivative is registered as a function
+  (check-equal? (automatic-simplify '(derivative (sqr x) x))
+                (* 2 'x))
+
+  ;; Register a function /after/ it has been used for derivation.
+  ;; Simplify the expression to obtain the correct derivative.
+  (let ()
+    (define bad-deriv (derivative '(__unknown-deriv (* x 2)) 'x))
+    (check-equal? bad-deriv '(derivative (__unknown-deriv (* x 2)) x))
+    (register-function '__unknown-deriv (λ (x) (sqr x)))
+    (check-equal? (automatic-simplify bad-deriv)
+                  (* 8 'x)))
+  
 
   (define (make-df f [h 0.001])
     (λ (x)
@@ -112,11 +131,6 @@
 ;; Minimalistic derivative based on df(x)/dx = f(x)dlog(f(x))/dx,
 ; and heavily relies a lot on automatic reduction, in particular of the log.
 (module+ drracket
-  (define (tree-size tree)
-    (cond [(pair? tree)
-           (+ (tree-size (car tree))
-              (tree-size (cdr tree)))]
-          [else 1]))
   
   (define (deriv* u x)
     #;(displayln u)

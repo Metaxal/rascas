@@ -13,6 +13,7 @@
          symbol->function
          no-fun
          rev-append
+         tree-size
          remove+?
          zero-number?
          nan-number?
@@ -117,6 +118,14 @@
 
   (check-equal? (rev-append '(a b c) '(1 2 3))
                 '(c b a 1 2 3)))
+
+;; Number of nodes and leaves in the AST (does not count the cons cells themselves).
+;; Useful to compare the size of equivalent expressions.
+(define (tree-size tree)
+  (cond [(pair? tree)
+         (+ (tree-size (car tree))
+            (tree-size (cdr tree)))]
+        [else 1]))
 
 ;; Returns the list l where v has been removed once at most,
 ;; and whether v was removed at all.
