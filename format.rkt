@@ -4,7 +4,9 @@
          racket/format
          racket/string)
 
-(define (->string u)
+(provide ->string)
+
+(define (->string u [v->string ~a])
   (match u
     [`(+ . ,elts)
      (string-append "(" (string-join (map ->string elts) "+") ")")]
@@ -20,7 +22,7 @@
       "("
       (string-join (map ->string elts) ",")
       ")")]
-    [else (~a u)]))
+    [else (v->string u)]))
 
 (module+ test
   (require rackunit)
