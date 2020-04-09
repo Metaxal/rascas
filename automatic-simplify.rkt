@@ -50,3 +50,4 @@
   (check-equal? (->inexact '(* 3 pi)) (rkt:* 3 rkt:pi))
   (check-equal? (->inexact (/ 3 (* 2 3))) .5)
   )
+
