@@ -19,9 +19,14 @@
 (define vars (make-hash))
 
 (define-lex-abbrevs
- (lower-letter (:/ "a" "z"))
+  (lower-letter (:/ "a" "z"))
 
- (upper-letter (:/ #\A #\Z))
+  (upper-letter (:/ #\A #\Z))
+
+  (greek-lower (:/ #\u03B1 #\u03C9))
+  (greek-upper (:/ #\u0391 #\u03A9))
+
+  (letter (:or lower-letter upper-letter greek-lower greek-upper))
 
  ;; (:/ 0 9) would not work because the lexer does not understand numbers.  (:/ #\0 #\9) is ok too.
  (digit (:/ "0" "9")))
@@ -43,7 +48,7 @@
    ["(" 'OP]
    [")" 'CP]
    #;["sin" (token-FNCT sin)]
-   [(:+ (:or lower-letter upper-letter)) (token-VAR (string->symbol lexeme))]
+   [(:+ letter) (token-VAR (string->symbol lexeme))]
    [(:+ digit) (token-NUM (string->number lexeme))]
    ;; complex number, imaginary part:
    [(:: (:+ digit) #\i) (token-NUM (string->imaginary-number lexeme))]
@@ -127,6 +132,9 @@
   (check-equal? (alg "a + b
                         + c")
                 '(+ (+ a b) c))
+  (check-equal? (alg "α + β
+                        + λ")
+                '(+ (+ α β) λ))
   (check-equal? (alg "3+2i")
                 '(+ 3 0+2i))
   )
