@@ -20,6 +20,7 @@
          inexact-number?
          even-number?
          nonempty-list?
+         length<=
          product? quotient? sum? difference? power? factorial? function?
          exp?
          log?
@@ -73,6 +74,30 @@
   ; pair? would do almost the same job though.
   (and (list? l)
        (not (empty? l))))
+
+;; Returns #t if the list l has length at most n.
+;; Takes time O(min{length(l), n}), so can be significantly faster
+;; than (<= (length l) n) for large l and small n.
+(define (length<= l n)
+  (cond [(< n 0) #f]
+        [(empty? l) #t]
+        [else (length<= (rest l) (- n 1))]))
+
+(module+ test
+  (check-equal? (length<= '() 0)
+                #t)
+  (check-equal? (length<= '() -1)
+                #f)
+  (check-equal? (length<= '(a) 0)
+                #f)
+  (check-equal? (length<= '(a) 1)
+                #t)
+  (check-equal? (length<= '(a b) 1)
+                #f)
+  (check-equal? (length<= '(a b) 2)
+                #t)
+  (check-equal? (length<= '(a b) 3)
+                #t))
 
 ;; Racket's `modulo' takes only integers and behaves differently.
 (define (mod x n)
