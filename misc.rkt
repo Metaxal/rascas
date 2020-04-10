@@ -38,6 +38,9 @@
          mod
          while)
 
+;; TODO: parameterize (nan) to raise an exception as early as possible
+;; instead of silently propagating.
+
 (module+ test
   (require rackunit))
 
@@ -254,72 +257,37 @@
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (product? expr)
-  (match expr
-    [`(* . ,elts) #t]
-    [else         #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? '* (operator-kind expr)))
 
 (define (quotient? expr)
-  (match expr
-    [`(/ . ,elts) #t]
-    [else         #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? '/ (operator-kind expr)))
 
 (define (sum? expr)
-  (match expr
-    [`(+ . ,elts) #t]
-    [else         #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? '+ (operator-kind expr)))
 
 (define (difference? expr)
-  (match expr
-    [`(- . ,elts) #t]
-    [else        #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? '- (operator-kind expr)))
 
 (define (power? expr)
-  (match expr
-    [`(^ ,x ,y) #t]
-    [else       #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? '^ (operator-kind expr)))
 
 (define (factorial? expr)
-  (match expr
-    [`(! ,n) #t]
-    [else   #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? '! (operator-kind expr)))
 
 (define (exp? expr)
-  (match expr
-    [`(exp ,n) #t]
-    [else      #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? 'exp (operator-kind expr)))
 
 (define (log? expr)
-  (match expr
-    [`(log ,n) #t]
-    [else      #f]))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (eq? 'log (operator-kind expr)))
 
 (define (sin? expr)
-  (and (pair? expr)
-       (eq? (car expr) 'sin)))
+  (eq? 'sin (operator-kind expr)))
 
 (define (cos? expr)
-  (and (pair? expr)
-       (eq? (car expr) 'cos)))
+  (eq? 'cos (operator-kind expr)))
 
 (define (tan? expr)
-  (and (pair? expr)
-       (eq? (car expr) 'tan)))
+  (eq? 'tan (operator-kind expr)))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -342,11 +310,9 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-syntax vars
-  (syntax-rules ()
-    ((vars name ...)
-     (begin (define name 'name)
-            ...))))
+(define-syntax-rule (vars name ...)
+  (begin (define name 'name)
+         ...))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
