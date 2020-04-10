@@ -8,7 +8,7 @@
          (only-in racket/math nan? infinite?)
          (prefix-in rkt: (only-in racket/base + * expt abs / exp sqrt log))
          (prefix-in rkt: (only-in racket/math sgn))
-         (prefix-in rkt: (only-in math/number-theory factorial))
+         (prefix-in rkt: (only-in math/number-theory factorial binomial))
          racket/list)
 
 (provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn
@@ -172,9 +172,7 @@
                       (k 0) )
             (if (> k n)
                 s
-                (let ((c (/ (! n)
-                            (* (! k)
-                               (! (- n k))))))
+              (let ([c (rkt:binomial n k)])
                   (loop (+ s 
                            (expand-product (* c (^ f (- n k)))
                                            (expand-power r k)))
