@@ -13,12 +13,6 @@
 
 (provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn
          exp log ! (rename-out [! factorial]) 
-         simplify-sum
-         simplify-difference
-         simplify-product
-         simplify-power
-         simplify-quotient
-         simplify-factorial
          expand-main-op
          expand-exp
          expand-power
@@ -142,10 +136,7 @@
       [else `(^ ,v ,w)])))
 
 (register-function '^ ^)
-
-(define simplify-power
-  (match-lambda
-    [`(^ ,u ,v) (^ u v)]))
+(register-function 'expt ^)
 
 (module+ test
   ; Checked with maxima for the harder cases
@@ -207,14 +198,12 @@
 ;; ! (factorial)
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (simplify-factorial u)
-  (match u
-    [`(! ,(? number? n)) (rkt:factorial n)]
-    [`(! ,n) u]))
-
 (define (! n)
-  (simplify-factorial `(! ,n)))
-(register-function `! !)
+  (if (number? n)
+    (rkt:factorial n)
+    `(! ,n)))
+(register-function '! !)
+(register-function 'factorial !)
   
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; *
@@ -323,26 +312,23 @@
                 +nan.0)
   )
 
-(define (simplify-product u)
-  (match u
-    [`(* ,x) x]
-    [`(* . ,elts)
+(define (* . elts)
+  (match elts
+    ['() 1]
+    [(list x) x]
+    [else
      (cond
        [(absorb-product elts)] ; return nan, 0, 0., +inf.0 or -inf.0 or skip to next clause.
        [else
         (match (simplify-product-rec elts)
           ['() 1]
           [(list x) x]
-          [xs `(* ,@xs)])])]))
-
-(define (* . elts)
-  (simplify-product `(* ,@elts)))
+          [xs `(* . ,xs)])])]))
 (register-function '* *)
 
 (define (sqr x)
   (^ x 2))
 (register-function 'sqr sqr)
-
 
 (define (expand-product r s)
   (cond ( (sum? r)
@@ -395,31 +381,25 @@
     [`((+ . ,ps) . ,qs) (merge-sums ps       (simplify-sum-rec qs))]
     [`(,x        . ,xs) (merge-sums (list x) (simplify-sum-rec xs))]))
 
-(define (simplify-sum u)
-  (match u
-    [`(+) 0]
-    [`(+ ,x) x]
-    [`(+ . ,elts)
+(define (+ . elts)
+  (match elts
+    ['() 0]
+    [(list x) x]
+    [else
      (match (simplify-sum-rec elts)
        ['() 0]
        [(list x) x]
-       [xs `(+ ,@xs)])]))
-
-(define (+ . elts)
-  (simplify-sum `(+ ,@elts)))
+       [xs `(+ . ,xs)])]))
 (register-function '+ +)
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; -
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (simplify-difference u)
-  (match u
-    [`(- ,x)    (* -1 x)]
-    [`(- ,x . ,ys) (+ x (* -1 (apply + ys)))]))
-
 (define (- . elts)
-  (simplify-difference `(- ,@elts)))
+  (match elts
+    [(list x)    (* -1 x)]
+    [`(,x . ,ys) (+ x (* -1 (apply + ys)))]))
 
 (module+ test
   (check-equal? (- 1 2 3) -4)
@@ -432,20 +412,17 @@
 ;; /
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (simplify-quotient u)
-  (match u
-    [`(/ ,x . ,ys)
+
+(define /
+  (case-lambda
+    [(u) (/ 1 u)]
+    [(x . ys)
      (define y (apply * ys))
      (if (and (number? x) (number? y))
        (if (and (zero? x) (zero? y))
          +nan.0 ; override racket's default
          (rkt:/ x y))
        (* x (^ y -1)))]))
-
-(define /
-  (case-lambda
-    [(u) (simplify-quotient `(/ 1 ,u))]
-    [(u . vs) (simplify-quotient `(/ ,u . ,vs))]))
 (register-function '/ /)
 
 (module+ test
