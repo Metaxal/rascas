@@ -13,6 +13,8 @@
 (module+ test
   (require rackunit))
 
+;; TODO: merge with smart-simplify?
+
 (define (automatic-simplify u [inexact? #f])
   (let loop ([u u])
     (if (list? u)

@@ -5,12 +5,12 @@
          "factor.rkt"
          "distribute.rkt")
 
-(provide simplify)
+(provide smart-simplify)
 
 ;; Tries hard to simplify u with various strategies.
 ;; Still work in progress.
 ;; TODO: Check for trigonometric functions and apply trig-simplify. Same for contract/expand of exp?
-(define (simplify u)
+(define (smart-simplify u)
   (for/fold ([best u]
              [best-size (tree-size u)]
              #:result best)
@@ -45,11 +45,11 @@
   df
   (displayln (list 'tree-size: (tree-size df)))
   (displayln "Using simplify:")
-  (define df-simple (simplify df))
+  (define df-simple (smart-simplify df))
   df-simple
   (displayln (list 'tree-size: (tree-size df-simple)))
   (displayln "Taking the second derivative:")
   (define ddf (derivative df-simple 'x))
   (displayln (list 'ddf-tree-size: (tree-size ddf)))
-  (displayln (list 'ddf-simple-tree-size: (tree-size (simplify ddf))))
+  (displayln (list 'ddf-simple-tree-size: (tree-size (smart-simplify ddf))))
   )
