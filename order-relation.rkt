@@ -125,7 +125,7 @@
            
            (if (equal? (list-ref u 1) v)
                #f
-               (order-relation u `(! ,v))))
+               (order-relation u `(! ,v)))) ; ???
 
           ((and (function? u)
                 (symbol? v)) ;; O-12

@@ -379,16 +379,72 @@
     [`((+ . ,ps) . ,qs) (merge-sums ps       (simplify-sum-rec qs))]
     [`(,x        . ,xs) (merge-sums (list x) (simplify-sum-rec xs))]))
 
-(define (+ . elts)
-  (match elts
-    ['() 0]
-    [(list x) x]
-    [else
-     (match (simplify-sum-rec elts)
-       ['() 0]
-       [(list x) x]
-       [xs `(+ . ,xs)])]))
+#;(define (+ . elts)
+    (match elts
+      ['() 0]
+      [(list x) x]
+      [else
+       (match (simplify-sum-rec elts)
+         ['() 0]
+         [(list x) x]
+         [xs `(+ . ,xs)])]))
+
+;; Faster +, sometimes by a factor 25.
+;; Assumes that the (always at most single) number in a product is always the first element.
+(define (+ . l)
+  (define counts (make-hash))
+  (define tot-nums 0)
+  ; Count how many elements of each kind, also looking into products.
+  (let loop ([l l])
+    (unless (null? l)
+      (define x (car l))
+      (cond
+        [(number? x)
+         (set! tot-nums (rkt:+ tot-nums x))
+         (loop (cdr l))]
+        [(sum? x)
+         (loop (cdr x))
+         (loop (cdr l))]
+        [(product? x)
+         (define args (cdr x))
+         (match args
+           ['() (set! tot-nums (rkt:+ 1 tot-nums))] ; should not happen though.
+           [`(,(? number? n) ,y)
+            (hash-update! counts y (λ (m) (rkt:+ n m)) 0)]
+           [`(,(? number? n) . ,rs)
+            (hash-update! counts `(* . ,rs) (λ (m) (rkt:+ n m)) 0)]
+           [else
+            (hash-update! counts x add1 0)])
+         (loop (cdr l))]
+        [else
+         (hash-update! counts x add1 0)
+         (loop (cdr l))])))
+  ; end of loop, return a sorted and compact list
+  (define lres
+    (for/fold ([lres '()]
+               #:result (sort lres order-relation))
+              ([(x n) (in-hash counts)])
+      (cond
+        [(= 0 n) lres]
+        [(= 1 n) (cons x lres)]
+        [else (cons (* n x) lres)])))
+  ; return value
+  (cond [(null? lres)
+         ; single element (number), remove '+
+         tot-nums]
+        [(and (null? (cdr lres))
+              (= 0 tot-nums))
+         ; single element (not number), remove '+
+         (car lres)]
+        [(= 0 tot-nums)
+         (cons '+ lres)]
+        [else
+         `(+ ,tot-nums . ,lres)]))
 (register-function '+ +)
+
+(module+ test
+  (check-equal? (+ (* 'a 'x) 'b)
+                '(+ b (* a x))))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; -
