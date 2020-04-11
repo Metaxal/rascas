@@ -40,6 +40,7 @@
 (register-inverse 'tanh 'atanh)
 
 ;; Returns the inverse of y=u(x) for x.
+;; Checks only a limited number of cases.
 (define (inverse u x y) ; change order of arguments??
   (let loop ([u (- u y)] [x x] [y 0]) ; just in case y contains x.
     (cond

@@ -192,15 +192,14 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; For functions of 1 argument
+;;; For functions of 1 argument.
 ;;; A function registered here allows to be used by automatic-simplify
 ;;; and ->inexact.
 ;;; Functions like cos, sqr, gamma fit the bill.
-
 (define-syntax-rule (define-simple-function name rkt)
   (begin
     (define (name v)
-      (or (try-apply-number rkt v)
+      (or (try-apply-number rkt v) ; First, try if racket reduces it.
           `(name ,v)))
     (register-function 'name name)))
 
@@ -218,7 +217,8 @@
 (define (symbol->function sym)
   (hash-ref function-dict sym #f))
 
-;; Function that does nothing but cons sym into l
+;; Function that does nothing but cons sym into l.
+;; Used in distribute and factor.
 (define ((no-fun sym) . l)
   (cons sym l))
 
@@ -256,12 +256,14 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: Rename to times?
 (define (product? expr)
   (eq? '* (operator-kind expr)))
 
 (define (quotient? expr)
   (eq? '/ (operator-kind expr)))
 
+;; TODO: Rename to plus?
 (define (sum? expr)
   (eq? '+ (operator-kind expr)))
 
