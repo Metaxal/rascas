@@ -346,49 +346,6 @@
 ;; +
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (merge-sums p-elts q-elts)
-  (match (list p-elts q-elts)
-    [`(() ,x) x]
-    [`(,x ()) x]
-    [`((,p . ,ps) (,q . ,qs))
-     (match (simplify-sum-rec (list p q))
-       ['()                       (merge-sums ps qs)]
-       [(list x)                  (cons x (merge-sums ps qs))]
-       [(? (equal-to (list p q))) (cons p (merge-sums ps q-elts))]
-       [(? (equal-to (list q p))) (cons q (merge-sums p-elts qs))])]))
-
-(define (simplify-sum-rec elts)
-  (match elts
-    [`((+ . ,p-elts) (+ . ,q-elts))     (merge-sums p-elts q-elts)]
-    [`((+ . ,p-elts) ,q)                (merge-sums p-elts (list q))]
-    [`(,p (+ . ,q-elts))                (merge-sums (list p) q-elts)]
-    [(list (? number? p) (? number? q)) (list-or-null-if-0 (rkt:+ p q))]
-    [`(0 ,x) (list x)]
-    [`(,x 0) (list x)]
-    [(list p q)
-     (cond ((equal? (term p) (term q))
-            (list-or-null-if-0
-             (* (term p)
-                (+ (const p)
-                   (const q)))))
-
-           ((order-relation q p)
-            (list q p))
-
-           (else (list p q)))]
-    [`((+ . ,ps) . ,qs) (merge-sums ps       (simplify-sum-rec qs))]
-    [`(,x        . ,xs) (merge-sums (list x) (simplify-sum-rec xs))]))
-
-#;(define (+ . elts)
-    (match elts
-      ['() 0]
-      [(list x) x]
-      [else
-       (match (simplify-sum-rec elts)
-         ['() 0]
-         [(list x) x]
-         [xs `(+ . ,xs)])]))
-
 ;; Faster +, sometimes by a factor 25.
 ;; Assumes that the (always at most single) number in a product is always the first element.
 (define (+ . l)
@@ -443,6 +400,12 @@
 (register-function '+ +)
 
 (module+ test
+  (check-equal? (+ 3 4 5)
+                12)
+  (check-equal? (+ 'x 'x)
+                '(* 2 x))
+  (check-equal? (+ 'a 3 'a (exp 'x) '4 (* 3 'a) (exp 'x))
+                '(+ 7 (* 5 a) (* 2 (exp x))))
   (check-equal? (+ (* 'a 'x) 'b)
                 '(+ b (* a x))))
 
