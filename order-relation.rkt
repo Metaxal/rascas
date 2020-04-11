@@ -53,8 +53,7 @@
           ((and (symbol? u)
                 (symbol? v)) ;; O-2
 
-           (string<? (symbol->string u)
-                     (symbol->string v)))
+           (symbol<? u v))
 
           ((or (and (product? u)
                     (product? v))
