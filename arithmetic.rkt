@@ -207,47 +207,6 @@
 ;; *
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (merge-products p-elts q-elts)
-  (match (list p-elts q-elts)
-    [(list '() x) x]
-    [(list x '()) x]
-    [`((,p . ,ps) (,q . ,qs))
-     (match (simplify-product-rec (list p q))
-       ['()
-        (merge-products ps qs)]
-       [(list x)
-        (cons x (merge-products ps qs))]
-       [(? (equal-to (list p q)))
-        (cons p (merge-products ps q-elts))]
-       [(? (equal-to (list q p)))
-        (cons q (merge-products p-elts qs))])]))
-
-(define (simplify-product-rec elts)
-  (match elts
-    [(list `(* . ,p-elts) `(* . ,q-elts))
-     (merge-products p-elts q-elts)]
-    [`((* . ,p-elts) ,q)
-     (merge-products p-elts (list q))]
-    [`(,p (* . ,q-elts))
-     (merge-products (list p) q-elts)]
-    [(list (? number? p) (? number? q))
-     (list-or-null-if-1 (rkt:* p q))]
-    [(list 1 x) (list x)]
-    [(list x 1) (list x)]
-    [(list p q) (cond ((equal? (base p) (base q))
-                       (list-or-null-if-1
-                        (^ (base p)
-                           (+ (exponent p)
-                              (exponent q)))))
-
-                      ((order-relation q p) (list q p))
-
-                      (else (list p q)))]
-    [`((* . ,ps) . ,qs)
-     (merge-products ps (simplify-product-rec qs))]
-    [`(,x . ,xs)
-     (merge-products (list x) (simplify-product-rec xs))]))
-
 ;; Returns one of the absorbing elements 0, 0.0, -0.0, +nan.0, +inf.0, -inf.0.
 ;; +nan.0 is contagious,
 ;; zero and infinite make +nan.0,
@@ -310,19 +269,71 @@
                 +nan.0)
   )
 
+;; Assumes that subexpressions (powers in particular) have already been reduced.
 (define (* . elts)
-  (match elts
-    ['() 1]
-    [(list x) x]
-    [else
+  ; Hash containing the sum of the exponents as a list (may be symbolic).
+  ; The sum is applied at the end.
+  (define counts (make-hash))
+  ; Product of the (real) numbers, initially maintained as a list so as
+  ; to apply the absorption loop at the end (instead of earlier).
+  (define nums '())
+  ;; Count how many elements of each kind, merging products and looking inside powers.
+  (let loop ([l elts])
+    (unless (null? l)
+      (define x (car l))
+      (cond
+        [(number? x)
+         (set! nums (cons x nums))
+         (loop (cdr l))]
+        [(product? x)
+         ; Merge products.
+         (loop (cdr x))
+         (loop (cdr l))]
+        [(power? x)
+         (define ba (base x))
+         (define ex (exponent x))
+         (hash-update! counts ba (λ (exps) (cons ex exps)) '())
+         (loop (cdr l))]
+        [else
+         (hash-update! counts x (λ (exps) (cons 1 exps)) '())
+         (loop (cdr l))])))
+  ; End of loop, return a sorted and compact list
+  (define lres
+    (for/fold ([lres '()]
+               #:result (sort lres order-relation))
+              ([(x exps) (in-hash counts)])
+      (define pow (^ x (apply + exps)))
+      (cond
+        [(number? pow)
+         (set! nums (cons pow nums))
+         lres]
+        [else (cons pow lres)])))
+  ; Return value.
+  (or
+   ; Check for absorption. If any, symbolic expression are considered to not matter.
+   (absorb-product nums)
+   (let ([tot-nums (apply rkt:* nums)])
      (cond
-       [(absorb-product elts)] ; return nan, 0, 0., +inf.0 or -inf.0 or skip to next clause.
+       [(null? lres)
+        ; Single element (number), remove '*.
+        tot-nums]
+       [(and (null? (cdr lres))
+             (= 1 tot-nums))
+        ; Single element (not number), remove '*.
+        (car lres)]
+       [(= 1 tot-nums)
+        (cons '* lres)]
        [else
-        (match (simplify-product-rec elts)
-          ['() 1]
-          [(list x) x]
-          [xs `(* . ,xs)])])]))
+        `(* ,tot-nums . ,lres)]))))
 (register-function '* *)
+
+(module+ test
+  (check-equal? (* 2 3) 6)
+  (check-equal? (* 2 'x) '(* 2 x))
+  (check-equal? (* 'x) 'x)
+  (check-equal? (* 'x 'x) '(^ x 2))
+  (check-equal? (* (* 'a 'b) (* 'b 'c) 'a)
+                '(* (^ a 2) (^ b 2) c)))
 
 (define (sqr x)
   (^ x 2))
@@ -346,12 +357,11 @@
 ;; +
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Faster +, sometimes by a factor 25.
 ;; Assumes that the (always at most single) number in a product is always the first element.
 (define (+ . l)
   (define counts (make-hash))
   (define tot-nums 0)
-  ; Count how many elements of each kind, also looking into products.
+  ; Count how many elements of each kind, merging sums and looking inside products.
   (let loop ([l l])
     (unless (null? l)
       (define x (car l))
@@ -360,6 +370,7 @@
          (set! tot-nums (rkt:+ tot-nums x))
          (loop (cdr l))]
         [(sum? x)
+         ; merge sums
          (loop (cdr x))
          (loop (cdr l))]
         [(product? x)
