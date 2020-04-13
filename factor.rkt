@@ -119,7 +119,27 @@
 
   (check-equal? (factor-product '(+ a (* a b x) (* a c x) (* a d y) (* a e y)))
                 '(* a (+ 1 (* (+ b c) x) (* (+ d e) y))))
-  
+
+  (check-equal?
+   (factor-product
+    '(+
+      (* a e)
+      (* b e)
+      (* c e)
+      (* d e)
+      (* a f)
+      (* b f)
+      (* c f)
+      (* d f)
+      (* a g)
+      (* b g)
+      (* c g)
+      (* d g)
+      (* a h)
+      (* b h)
+      (* c h)
+      (* d h)))
+   '(* (+ a b c d) (+ e f g h)))
 
   ; does a decent job, but does not refactor to (+ 1 a)(+ 1 b)...
   #;
