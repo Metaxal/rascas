@@ -18,11 +18,18 @@
 (define (automatic-simplify u [inexact? #f])
   (let loop ([u u])
     (if (list? u)
-      (let ([v (map loop u)])
+      ;; TODO: Macro order, for let* for example (and 'substitute'?):
+      ;;   First reduce the current expression, then the expression below.
+      ;; TODO: In principle, a symbol like '+ could be registered both as a macro
+      ;;  and as a function.
+      ;; Expression order: first reduce the expression below, then
+      ;; reduce the current one.
+      (let ([v (map loop u)]) ; WARNING: Interaction with let*? (seems okay, but barely)
         (cond [(symbol->function (car v))
                =>
                (λ (fun) (apply fun (cdr v)))]
               [else v]))
+      ;; Not a list, try to reduce to a number.
       (if inexact?
         (cond
           [(number? u) (exact->inexact u)]

@@ -44,6 +44,9 @@
 
 ;; TODO: to speed up, specialized variant that just substitutes
 ;; symbols with eq?, and sort the symbols(not sure it's worth it)
+;; u : tree
+;; S : assoc list, but instead of cons pairs, it takes lists '(id val)
+;;     TODO: also allow for a hash table.
 (define (concurrent-substitute u S [=? equal?])
   (automatic-simplify
    (let loop ([u u])
