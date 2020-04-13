@@ -2,7 +2,8 @@
 
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
-(require racket/list
+(require racket/dict
+         racket/list
          racket/match
          racket/math)
 
@@ -12,6 +13,10 @@
          register-function
          symbol->function
          no-fun
+         register-derivatives
+         register-derivative
+         function-derivatives
+         function-derivative
          rev-append
          tree-size
          remove+?
@@ -324,3 +329,50 @@
       body
       ...
       (loop))))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Derivatives dict
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Dictionary and functions to register and obtain the
+;;; per-argument derivatives of a function.
+
+(define diff-dict (make-hasheq))
+
+(define (register-derivatives fsym dfs)
+  (unless (list? dfs)
+    (raise-argument-error 'register-derivatives fsym "list?" dfs))
+  (define fun (symbol->function fsym))
+  (when fun
+    (unless (procedure-arity-includes? fun (length dfs) #t)
+      (raise-argument-error
+       'register-derivatives fsym
+       "Same number of derivatives as the number of arguments of the corresponding function."
+       (length dfs))))
+  (when (dict-has-key? diff-dict fsym)
+    (error "derivative already defined for " fsym))
+  (dict-set! diff-dict fsym dfs))
+
+(define (register-derivative fsym df)
+  (when (dict-has-key? diff-dict fsym)
+    (error "derivative already defined for " fsym))
+  (dict-set! diff-dict fsym (list df)))
+
+(define (function-derivatives fsym)
+  (dict-ref diff-dict fsym #f))
+
+(define (function-derivative fsym)
+  (car (dict-ref diff-dict fsym '(#f))))
+
+;; Ex:
+#;(register-derivative 'log (λ (x) (/ x)))
+#;(begin (define (my-fun a b) ...)
+         (register-function 'my-fun my-fun)
+         (register-derivatives
+          'my-fun
+          (list
+           ; derivative of my-fun for the first argument
+           (λ (a b) ...)
+           ; derivative of my-fun for the second argument
+           (λ (a b) ... ))))
+

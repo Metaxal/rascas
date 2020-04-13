@@ -41,6 +41,32 @@
 (define ((equal-to x) y)
   (equal? x y))
 
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; sgn
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (sgn u)
+  (match u
+    [(? number?) (rkt:sgn u)]
+    [`(sgn ,v) (sgn v)] ; remove one level and try again
+    [else `(sgn ,u)]))
+(register-function 'sgn sgn)
+(register-derivative 'sgn (λ (x) 0)) ; undef at x=0?
+
+(module+ test
+  (check-equal? (sgn 0) 0)
+  (check-equal? (sgn 0.) 0.)
+  (check-equal? (sgn 3) 1)
+  (check-equal? (sgn 3.) 1.)
+  (check-equal? (sgn -3) -1)
+  (check-equal? (sgn 'x) '(sgn x))
+  (check-equal? (sgn (sgn 'x)) (sgn 'x))
+  (check-equal? (sgn (sgn (sgn 'x))) (sgn 'x))
+  (check-equal? (sgn (abs 'x)) (sgn (abs 'x))) ; 0 or 1 (DiracDelta function)
+  #;(check-equal? (* (sgn 'x) 'x) (abs 'x)) ; not checked for now
+  )
+
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; abs
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -53,6 +79,7 @@
     [(? number?) (rkt:abs u)]
     [else `(abs ,u)]))
 (register-function 'abs abs)
+(register-derivative 'abs sgn)
 
 (module+ test
   (check-equal? (abs (abs 'x))
@@ -67,30 +94,6 @@
                 3.2)
   (check-equal? (abs 'x)
                 '(abs x)))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; sgn
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (sgn u)
-  (match u
-    [(? number?) (rkt:sgn u)]
-    [`(sgn ,v) (sgn v)] ; remove one level and try again
-    [else `(sgn ,u)]))
-(register-function 'sgn sgn)
-
-(module+ test
-  (check-equal? (sgn 0) 0)
-  (check-equal? (sgn 0.) 0.)
-  (check-equal? (sgn 3) 1)
-  (check-equal? (sgn 3.) 1.)
-  (check-equal? (sgn -3) -1)
-  (check-equal? (sgn 'x) '(sgn x))
-  (check-equal? (sgn (sgn 'x)) (sgn 'x))
-  (check-equal? (sgn (sgn (sgn 'x))) (sgn 'x))
-  (check-equal? (sgn (abs 'x)) (sgn (abs 'x))) ; 0 or 1 (DiracDelta function)
-  #;(check-equal? (* (sgn 'x) 'x) (abs 'x)) ; not checked for now
-  )
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ^
@@ -137,6 +140,12 @@
 
 (register-function '^ ^)
 (register-function 'expt ^)
+(register-derivatives ; plural
+ '^
+ ; One derivative per argument
+ (list
+  (λ (v w) (* w (^ v (- w 1))))
+  (λ (v w) (* (log v) (^ v w)))))
 
 (module+ test
   ; Checked with maxima for the harder cases
@@ -338,6 +347,8 @@
 (define (sqr x)
   (^ x 2))
 (register-function 'sqr sqr)
+; Should we register a derivative too?
+; Shouldn't be necessary if the function is applied first.
 
 (define (expand-product r s)
   (cond ( (sum? r)
@@ -483,6 +494,7 @@
      ; todo: what if product or a sum with a log in the middle?
      [else `(exp ,u)])))
 (register-function 'exp exp)
+(register-derivative 'exp exp)
 
 (module+ test
   (check-equal? (exp 0) 1)
@@ -576,6 +588,7 @@
     [(u v)
      (/ (log u) (log v))]))
 (register-function 'log log)
+(register-derivative 'log (λ (x) (/ 1 x)))
 
 (module+ test
   (require rackunit)

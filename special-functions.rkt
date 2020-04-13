@@ -27,6 +27,7 @@
 (define-simple-function Fresnel-RS  rkt:Fresnel-RS)
 (define-simple-function Fresnel-RC  rkt:Fresnel-RC)
 
+(register-derivative 'gamma (λ (v) (* (gamma v) (psi0 v))))
 
 (module+ test
   (require rackunit

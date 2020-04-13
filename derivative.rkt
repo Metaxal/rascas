@@ -6,34 +6,18 @@
 
 (require "misc.rkt"
          "arithmetic.rkt"
-         "special-functions.rkt"
          "contains.rkt"
-         "trig-functions.rkt"
          racket/list
          racket/match)
-        
+
+
 (define (derivative u x)
-  #;(displayln u)
   (cond
     [(equal? u x) 1]
     [(free? u x) 0] ; check early to simplify early, but can be costly in total!
     [else
      (match u
-       [`(sgn ,_) 0] ; actually undefined for x=0(!)
-       [`(abs ,v) (sgn v)] ; should be undefined for v=0
-       [`(exp ,v)
-        (* (derivative v x)
-            u)]
-       [`(log ,v)
-        (/ (derivative v x)
-           v)]
-       [`(^ ,v ,w)
-        (+ (* w
-              (^ v (- w 1))
-              (derivative v x))
-           (* (derivative w x)
-              (^ v w)
-              (log v)))]
+       ;; Due to their variadic nature, + and * are treated specially.
        [`(+ . ,vs)
         (apply + (map (λ (v) (derivative v x))
                       vs))]
@@ -50,22 +34,26 @@
        [`(* ,v . ,ws)
         ; This can take quadratic time with the number of arguments but doesn't
         ; produce inverses like the variant above.
-        (define *ws (apply * ws))
+        (define *ws `(* . ,ws))
         (+ (* v (derivative *ws x))
            (* *ws (derivative v x)))]
-       ;; Trigonometry
-       [`(sin ,v)
-        (* (cos v) (derivative v x))]
-       [`(cos ,v)
-        (* (- (sin v)) (derivative v x))]
-       [`(tan ,v)
-        (* (^ `(sec ,v) 2) (derivative v x))]
 
-       ; Special functions
-       [`(gamma ,v) (* (derivative v x)
-                       (gamma v)
-                       (psi0 v))]
-       ; unknown function symbols
+       ;; General case.
+       [`(,op . ,args)
+        ; The number of derivs must be equal to the number of args
+        (define dfs (function-derivatives op))
+        (if dfs
+          (begin
+            (unless (= (length args) (length dfs))
+              (error "The number of derivatives does not match the number of arguments"
+                     dfs args))
+            (apply + (map (λ (df arg)
+                          (* (apply df args)
+                             (derivative arg x)))
+                        dfs
+                        args)))
+          `(derivative ,u ,x))]
+       ; Unknown case (reachable?).
        [else `(derivative ,u ,x)])]))
 
 ;; So that an expression that could not be derived earlier can now be.
@@ -76,7 +64,9 @@
 (module+ test
   (require rackunit
            "automatic-simplify.rkt"
-           "substitute.rkt")
+           "substitute.rkt"
+           "trig-functions.rkt"
+           "special-functions.rkt")
   (check-equal? (derivative (+ (* 3 (^ 'x 2)) (* 4 'x)) 'x)
                 (+ (* 6 'x) 4))
   (check-equal? (derivative (/ 3 'x) 'x)
@@ -92,7 +82,10 @@
   (check-equal? (derivative (cos (* 3 'x)) 'x)
                 '(* -3 (sin (* 3 x))))
   (check-equal? (derivative (tan (* 3 'x)) 'x)
-                '(* 3 (^ (sec (* 3 x)) 2)))
+                '(* 3 (^ (cos (* 3 x)) -2)))
+
+  ;; TODO: Check registering a derivative of 3 args
+  
 
   ; Check that 'derivative is registered as a function
   (check-equal? (automatic-simplify '(derivative (sqr x) x))

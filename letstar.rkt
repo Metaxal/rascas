@@ -73,6 +73,7 @@
 ;; Naming it `let*` would badly interact with Racket, because `_let*` doesn't
 ;; behave exactly like `let*`. The list of bindings are not ids, but expressions
 ;; so one must write like (_let* `([a ,(+ 2 'b)]) ...).
+;; NOTICE: _let* triggers `automatic-simplify`, which recurs through the tree.
 (define _let*
   (match-lambda*
     [`( (,bindings ...) ,body)
