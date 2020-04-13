@@ -45,10 +45,11 @@
 ;; TODO: to speed up, specialized variant that just substitutes
 ;; symbols with eq?, and sort the symbols(not sure it's worth it)
 (define (concurrent-substitute u S [=? equal?])
-  (let loop ([u u])
-    (cond [(assoc u S =?) => cadr]
-          [(list? u) (automatic-simplify (map loop u))]
-          [else u])))
+  (automatic-simplify
+   (let loop ([u u])
+     (cond [(assoc u S =?) => cadr]
+           [(list? u)         (map loop u)]
+           [else              u]))))
 
 
 ;; Like concurrent-apply, but the substitutions are given as a dictionary.
@@ -66,11 +67,11 @@
     [(u subst-dict)
      (unless (dict? subst-dict)
        (raise-argument-error 'apply// "subst-dict must be a dict?"))
-     (let loop ([u u])
-       (cond [(symbol? u)
-              (dict-ref subst-dict u u)]
-             [(list? u) (automatic-simplify (map loop u))]
-             [else u]))]))
+     (automatic-simplify
+      (let loop ([u u])
+        (cond [(symbol? u) (dict-ref subst-dict u u)]
+              [(list? u)   (map loop u)]
+              [else        u])))]))
 
 (module+ test
   (require rackunit
