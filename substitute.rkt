@@ -15,6 +15,7 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: Apply automatic-simplify only if a change has been detected?
 (define (substitute u t r)
   (automatic-simplify
    (cond ((equal? u t) r)
@@ -32,6 +33,7 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: Apply automatic-simplify only if a change has been detected?
 (define (sequential-substitute u L)
   (automatic-simplify
    (match L
@@ -42,6 +44,7 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: Apply automatic-simplify only if a change has been detected?
 ;; TODO: to speed up, specialized variant that just substitutes
 ;; symbols with eq?, and sort the symbols(not sure it's worth it)
 ;; u : tree
@@ -67,9 +70,11 @@
        (raise-arguments-error 'apply// "syms and vals must have the same lengths"))
      (apply// u (make-hasheq (map cons syms vals)))] ; immutable?
     ;; Substitutions are provided as a dictionary
+    ;; THIS DIFFERS FROM concurrent-substitute
     [(u subst-dict)
      (unless (dict? subst-dict)
        (raise-argument-error 'apply// "subst-dict must be a dict?"))
+     ;; TODO: Apply automatic-simplify only if a change has been detected?
      (automatic-simplify
       (let loop ([u u])
         (cond [(symbol? u) (dict-ref subst-dict u u)]

@@ -66,53 +66,78 @@
         `(let* ([,id ,ex1])
            ,sub-tree)])])))
 
-;; TODO. applying the 'function' let* should produce a value
-
 ;; The purpose of this 'function' is to remove the binding pairs when the
 ;; value is an atom (and not an expression), since it would take no more room
 ;; (in terms of tree size). Also, this ensures that the body can be reduced
 ;; if possible.
-;; Naming it `let*` would badly interact with Racket.
+;; Naming it `let*` would badly interact with Racket, because `_let*` doesn't
+;; behave exactly like `let*`. The list of bindings are not ids, but expressions
+;; so one must write like (_let* `([a ,(+ 2 'b)]) ...).
 (define _let*
   (match-lambda*
     [`( (,bindings ...) ,body)
-     (define-values (others atoms)
-       (partition (λ (p) (pair? (cadr p)))
-                  bindings))
-     (define new-body
-       (concurrent-substitute body atoms))
-     (if (null? others)
+     ; Recursively reduce the bindins if possible.
+     (define-values (subst new-let-bindings)
+       (for/fold ([subst '()] ; substitution list (not an assoc)
+                  [new-let-bindings '()]) ; new list of binding to keep in let*
+                 ([bind (in-list bindings)])
+         (define new-val (concurrent-substitute (cadr bind) subst))
+         (define new-bind (list (car bind) new-val))
+         (if (pair? new-val)
+           (values subst (cons new-bind new-let-bindings))
+           (values (cons new-bind subst) new-let-bindings))))
+     (define new-body (concurrent-substitute body subst))
+     (if (null? new-let-bindings)
        new-body
-       `(let* ,others ,new-body))]
+       `(let* ,new-let-bindings ,new-body))]
     [other (error "_let* bad form" other)]))
 (register-function 'let* _let*)
 
 (define (expand-let* u)
   (match u
     [`(let* (,bindings ...) ,body) ; ps are pairs
-     (concurrent-substitute body bindings)]
+     ;; Recursively replace the ids with their values
+     (define subst
+       (for/fold ([subst '()]) ; substitution list (not an assoc)
+                 ([bind (in-list bindings)])
+         (define new-val (concurrent-substitute (cadr bind) subst))
+         (cons (list (car bind) new-val) subst)))
+     (concurrent-substitute body subst)]
     [other (error "_let* bad form" other)]))
 
 (module+ test
   (require rackunit
            "trig-functions.rkt")
+  (check-equal? (_let* '() (+ 'a 2)) (+ 'a 2))
+  (check-equal? (_let* '([a 5]) (+ 'a 2)) 7)
+  (check-equal? (_let* '([a 5] [b a] [c (+ b a)]) (+ 'a 'b 'c))
+                20)
+  (check-equal? (_let* '([a b]) (+ 'a 2)) (+ 'b 2))
+  (check-equal? (_let* '([a (+ b 5)]) (+ 'a 2))
+                `(let* ([a ,(+ 'b 5)]) ,(+ 'a 2)))
   (check-equal? (contract-let* (+ (log (+ 'x 3))
-                                (exp (+ 'x 3))
-                                (^ (+ 'x 3) 'a))
-                             #:prefix '_y)
+                                  (exp (+ 'x 3))
+                                  (^ (+ 'x 3) 'a))
+                               #:prefix '_y)
                 `(let* ([_y0 ,(+ 'x 3)])
                    ,(+ (log '_y0) (exp '_y0) (^ '_y0 'a))))
+  (check-equal? (expand-let*
+                 (contract-let* (+ (log (+ 'x 3))
+                                   (exp (+ 'x 3))
+                                   (^ (+ 'x 3) 'a))
+                                #:prefix '_y))
+                '(+ (exp (+ 3 x)) (log (+ 3 x)) (^ (+ 3 x) a)))
   (check-equal?
    (contract-let* '(*
-                  2
-                  (^ a 2)
-                  (cos (exp (cos (* (^ a 2) (^ (+ b x) 2)))))
-                  (exp (cos (* (^ a 2) (^ (+ b x) 2))))
-                  (^ (sin (exp (cos (* (^ a 2) (^ (+ b x) 2))))) -1)
-                  (sin (log (sin (exp (cos (* (^ a 2) (^ (+ b x) 2)))))))
-                  (sin (* (^ a 2) (^ (+ b x) 2)))
-                  (+ b x))
-                #:prefix '_y)
+                    2
+                    (^ a 2)
+                    (cos (exp (cos (* (^ a 2) (^ (+ b x) 2)))))
+                    (exp (cos (* (^ a 2) (^ (+ b x) 2))))
+                    (^ (sin (exp (cos (* (^ a 2) (^ (+ b x) 2))))) -1)
+                    (sin (log (sin (exp (cos (* (^ a 2) (^ (+ b x) 2)))))))
+                    (sin (* (^ a 2) (^ (+ b x) 2)))
+                    (+ b x))
+                  #:prefix '_y)
    `(let* ((_y0 ,(* (^ 'a 2) (^ (+ 'b 'x) 2)))
            (_y1 ,(exp (cos '_y0)))
            (_y2 ,(sin '_y1)))
@@ -124,7 +149,30 @@
        (cos _y1)
        (sin _y0)
        (sin (log _y2))
-       (+ b x)))))
+       (+ b x))))
+  (check-equal?
+   (expand-let*
+    `(let* ((_y0 ,(* (^ 'a 2) (^ (+ 'b 'x) 2)))
+            (_y1 ,(exp (cos '_y0)))
+            (_y2 ,(sin '_y1)))
+       (*
+        2
+        _y1
+        (^ _y2 -1)
+        (^ a 2)
+        (cos _y1)
+        (sin _y0)
+        (sin (log _y2))
+        (+ b x))))
+   '(*
+     2
+     (^ a 2)
+     (cos (exp (cos (* (^ a 2) (^ (+ b x) 2)))))
+     (exp (cos (* (^ a 2) (^ (+ b x) 2))))
+     (^ (sin (exp (cos (* (^ a 2) (^ (+ b x) 2))))) -1)
+     (sin (log (sin (exp (cos (* (^ a 2) (^ (+ b x) 2)))))))
+     (sin (* (^ a 2) (^ (+ b x) 2)))
+     (+ b x))))
 
 
 ;; TODO: derivative through let*
