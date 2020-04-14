@@ -13,9 +13,14 @@
          racket/dict
          "automatic-simplify.rkt")
 
+(module+ test
+  (require rackunit))
+
+
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: Apply automatic-simplify only if a change has been detected?
+;; BETTER: simplify along the branch of the change only.
 (define (substitute u t r)
   (automatic-simplify
    (cond ((equal? u t) r)
@@ -46,17 +51,16 @@
 
 ;; TODO: Apply automatic-simplify only if a change has been detected?
 ;; TODO: to speed up, specialized variant that just substitutes
+;; TODO: also allow for a hash table.
 ;; symbols with eq?, and sort the symbols(not sure it's worth it)
 ;; u : tree
 ;; S : assoc list, but instead of cons pairs, it takes lists '(id val)
-;;     TODO: also allow for a hash table.
 (define (concurrent-substitute u S [=? equal?])
   (automatic-simplify
    (let loop ([u u])
-     (cond [(assoc u S =?) => cadr]
+     (cond [(assoc u S =?) => (λ (p) (loop (cadr p)))] ; need to recur 
            [(list? u)         (map loop u)]
            [else              u]))))
-
 
 ;; Like concurrent-apply, but the substitutions are given as a dictionary.
 ;; Substitutions apply only to symbols, and substitutions are not done
@@ -82,8 +86,8 @@
               [else        u])))]))
 
 (module+ test
-  (require rackunit
-           "arithmetic.rkt")
+  (require "arithmetic.rkt")
+
   (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x 0)
                 +nan.0)
   (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x 0.)
@@ -91,5 +95,21 @@
   (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x +inf.0)
                 +inf.0)
   (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x -inf.0)
-                -inf.0))
+                -inf.0)
+
+  ;; Recur through the substitutions too.
+  (check-equal?
+   (concurrent-substitute '(+ a b) '([a (+ b 2)] [b c]))
+   (+ (* 2 'c) 2)))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (tree->function f . syms)
+    (λ l
+      (define subst (map list syms l))
+      (concurrent-substitute f subst)))
+
+(module+ test
+  (check-equal? ((tree->function '(* x (op1 x y)) 'x 'y) 'a 'b)
+                '(* a (op1 a b))))
 
