@@ -5,9 +5,12 @@
 (require racket/dict
          racket/list
          racket/match
-         racket/math)
+         racket/math
+         (for-syntax racket/base))
 
 (provide pi
+         debug
+         symbol-format
          try-apply-number
          define-simple-function
          register-function
@@ -17,9 +20,12 @@
          register-derivative
          function-derivatives
          function-derivative
+         hash-best+key+index
          rev-append
          tree-size
+         ids-occurrences
          remove+?
+         remove-all+
          zero-number?
          nan-number?
          infinite-number?
@@ -41,13 +47,13 @@
          base
          exponent
          mod
-         while)
+         while
+         in-list+rest)
 
 ;; TODO: parameterize (nan) to raise an exception as early as possible
 ;; instead of silently propagating.
 
-(module+ test
-  (require rackunit))
+(module+ test (require "rackunit.rkt"))
 
 (define pi 'pi)
 
@@ -82,6 +88,14 @@
 (define (even-number? x)
   (and (integer? x) ; may not be exact
        (even? x)))
+
+(define (symbol-format fmt . args)
+  (string->symbol (apply format fmt args)))
+
+(define-syntax-rule (debug expr ...)
+  (begin
+    (printf "~a = ~a\n" 'expr expr)
+    ...))
 
 ;=============;
 ;=== Lists ===;
@@ -135,6 +149,25 @@
             (tree-size (cdr tree)))]
         [else 1]))
 
+(define (ids-occurrences ids tree)
+  (define h (make-hasheq))
+  (for ([id (in-list ids)])
+    (hash-set! h id 0))
+  (let loop ([tree tree])
+    (cond
+      [(hash-ref h tree #f)
+       (hash-update! h tree add1)]
+      [(pair? tree)
+       (loop (car tree))
+       (loop (cdr tree))]))
+  h)
+
+(module+ test
+  (check-equal?
+   (sort (hash->list (ids-occurrences '(a b z c) '(a (a (a) d a) e (* b (* a c) c))))
+         symbol<? #:key car)
+   '((a . 5) (b . 1) (c . 2) (z . 0))))
+
 ;; Returns the list l where v has been removed once at most,
 ;; and whether v was removed at all.
 (define (remove+? v lin [=? equal?])
@@ -148,21 +181,71 @@
           (loop (cdr l) (cons (car l) rev-left)))))))
 
 (module+ test
-  (check-equal?
-   (call-with-values
-    (λ () (remove+? 'c '(a b c d) eq?))
-    list)
-   '((a b d) #t))
-  (check-equal?
-   (call-with-values
-    (λ () (remove+? 'e '(a b c d) eq?))
-    list)
-   '((a b c d) #f))
-  (check-equal?
-   (call-with-values
-    (λ () (remove+? '(e f) '(a b c d (e f)) equal?))
-    list)
-   '((a b c d) #t)))
+  (check-values equal?
+                (λ () (remove+? 'c '(a b c d) eq?))
+                '((a b d) #t))
+  (check-values equal?
+                (λ () (remove+? 'e '(a b c d) eq?))
+                '((a b c d) #f))
+  (check-values equal?
+                (λ () (remove+? '(e f) '(a b c d (e f)) equal?))
+                '((a b c d) #t)))
+
+;; Returns the list where some of the vs have been removed at most once
+;; as well as the remaining vs that could not be removed.
+(define (remove-all+ vs l [=? equal?])
+  (let loop ([l l] [lres '()] [vs vs] [rms '()])
+    (cond
+      [(null? l) (values (reverse lres) (reverse rms) vs)]
+      [else
+       (define x (car l))
+       (if (member x vs =?)
+         (loop (cdr l) lres (remove x vs =?) (cons x rms))
+         (loop (cdr l) (cons x lres) vs rms))])))
+
+(module+ test
+  (check-values equal?
+                (λ () (remove-all+ '(a b c) '(z a b x a y)))
+                '((z x a y) (a b) (c)))
+  (check-values equal?
+                (λ () (remove-all+ '(a b c) '(z x y)))
+                '((z x y) () (a b c)))
+  (check-values equal?
+                (λ () (remove-all+ '(a b c) '(z a a b x a y c)))
+                '((z a x a y) (a b c) ())))
+
+;; extract-key: hash-key hash-val -> T ; This differs from `best+key+index` for lists
+;; better? : T T -> boolean (or any/c)
+;; Notice: If the hash is empty, all values are #f. It is the duty of the user
+;; to check whether the hash is empty beforehand if these default values are not suitable.
+;; The name conflict with `key` is annoying, but it's for consistency
+;; with `sort` and best-* variants.
+;; So we call the hash key the 'index' instead.
+(define (hash-best+key+index h better? #:key [extract-key (λ (idx val) val)])
+  (for/fold ([best-val #f]
+             [best-key #f]
+             [best-idx #f])
+            ([(x-idx x-val) (in-hash h)]
+             [i (in-naturals)])
+    (define x-key (extract-key x-idx x-val))
+    (if (or (= i 0)
+            (better? x-key best-key))
+      (values x-val x-key x-idx)
+      (values best-val best-key best-idx))))
+
+
+(module+ test
+  
+  (let ([h (hash "a" 2 "aa" 3 "abaaa" 3 "d" 5)])
+    (check-values equal?
+                  (λ () (hash-best+key+index h <))
+                  '(2 2 "a"))
+    (check-values equal?
+                  (λ () (hash-best+key+index h >))
+                  '(5 5 "d"))
+    (check-values equal?
+                  (λ () (hash-best+key+index h > #:key (λ (idx val) (string-length idx))))
+                  '(3 5 "abaaa"))))
 
 (define (operator-kind v)
   (and (pair? v)
@@ -329,6 +412,36 @@
       body
       ...
       (loop))))
+
+(define-sequence-syntax in-list+rest
+    (lambda () #'in-list+rest/proc)
+    (lambda (stx)
+      (syntax-case stx ()
+        [[(x r) (_ lst)]
+         #'[(x r)
+            (:do-in
+              ([(l) lst])
+              (unless (list? l)
+                (raise-argument-error 'in-list+rest "list?" l))
+              ([l l])
+              (not (null? l))
+              ([(x r) (values (car l) (cdr l))])
+              #true
+              #true
+              [r])]]
+        [_ #f])))
+
+(define (in-list+rest/proc l)
+  (for/list ([(x r) (in-list+rest l)]) (list x r)))
+
+(module+ test
+  (check-equal? (for/list ([(x r) (in-list+rest '(a b c))])
+                  (cons x r))
+                '((a b c) (b c) (c)))
+  (check-equal? (for*/list ([(x r) (in-list+rest '(a b c))]
+                            [y (in-list r)])
+                  (list x y))
+                '((a b) (a c) (b c))))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Derivatives dict
