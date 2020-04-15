@@ -3,6 +3,7 @@
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
 (provide substitute
+         substitute/no-simplify
          substitute-this
          substitute-in
          sequential-substitute
@@ -23,10 +24,14 @@
 ;; BETTER: simplify along the branch of the change only.
 (define (substitute u t r)
   (automatic-simplify
-   (cond ((equal? u t) r)
-         ((list? u)
-          (map (substitute-this t r) u))
-         (else u))))
+   (substitute/no-simplify u t r)))
+
+(define (substitute/no-simplify u t r)
+  (let loop ([u u])
+    (cond [(equal? u t) r]
+          [(list? u)
+           (map loop u)]
+          [else u])))
 
 (define (substitute-this t r)
   (lambda (u)
@@ -106,6 +111,7 @@
 
 (define (tree->function f . syms)
     (λ l
+      ; TODO: check number of args
       (define subst (map list syms l))
       (concurrent-substitute f subst)))
 
