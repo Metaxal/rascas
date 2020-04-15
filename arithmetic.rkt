@@ -41,6 +41,16 @@
 (define ((equal-to x) y)
   (equal? x y))
 
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; DiracDelta
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (dirac u)
+  (match u
+    [(? number?) (if (zero? u) 1 0)]
+    [else `(dirac ,u)]))
+(register-function 'dirac dirac)
+(register-derivative 'dirac (λ (x) 0))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sgn
@@ -52,7 +62,7 @@
     [`(sgn ,v) (sgn v)] ; remove one level and try again
     [else `(sgn ,u)]))
 (register-function 'sgn sgn)
-(register-derivative 'sgn (λ (x) 0)) ; undef at x=0?
+(register-derivative 'sgn (λ (x) (* 2 (dirac x)))) ; by limit 
 
 (module+ test
   (check-equal? (sgn 0) 0)
@@ -94,6 +104,41 @@
                 3.2)
   (check-equal? (abs 'x)
                 '(abs x)))
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; if and tests
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; A few primitives
+
+(define (>0 x)
+  (if (number? x)
+    (if (> x 0) 1 0)
+    `(>0 ,x)))
+(register-function '>0 >0)
+(register-derivative '>0 dirac)
+
+(define (>=0 x)
+  (if (number? x)
+    (if (>= x 0) 1 0)
+    `(>=0 ,x)))
+(register-function '>=0 >=0)
+(register-derivative '>=0 dirac)
+
+;;; The following are not primitives and so don't need derivatives.
+
+(define (_if test y n)
+  (+ (* test y)
+     (* (- 1 test) n)))
+(register-function 'if _if)
+
+(define (_> a b)
+  (>0 (- a b)))
+(register-function '> _>) ; only for reduction
+
+(define (_< a b)
+  (>0 (- b a)))
+(register-function '< _<)
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ^
