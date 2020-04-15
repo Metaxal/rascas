@@ -8,6 +8,7 @@
          substitute-in
          sequential-substitute
          concurrent-substitute
+         recurrent-substitute
          apply//)
 
 (require racket/match
@@ -20,11 +21,16 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: Apply automatic-simplify only if a change has been detected?
+
+;; Returns u where t has been substituted with r, and apply automatic-simplification only
+;; if any change has occurred.
 ;; BETTER: simplify along the branch of the change only.
 (define (substitute u t r)
-  (automatic-simplify
-   (substitute/no-simplify u t r)))
+  (define-values (new-u changed?)
+    (substitute/no-simplify+? u t r))
+  (if changed?
+    (automatic-simplify new-u)
+    u))
 
 (define (substitute/no-simplify u t r)
   (let loop ([u u])
@@ -32,6 +38,19 @@
           [(list? u)
            (map loop u)]
           [else u])))
+
+;; Returns u where t has been substituted with r, and whether any substitution has been done.
+(define (substitute/no-simplify+? u t r)
+  (define changed? #f)
+  (define new-u
+    (let loop ([u u])
+      (cond [(equal? u t)
+             (set! changed? #t)
+             r]
+            [(list? u)
+             (map loop u)]
+            [else u])))
+  (values new-u changed?))
 
 (define (substitute-this t r)
   (lambda (u)
@@ -43,29 +62,74 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: Apply automatic-simplify only if a change has been detected?
+;; Sequentially substitutes all of L into u.
+;; automatic-simplify is triggerred only if any change has been made.
 (define (sequential-substitute u L)
-  (automatic-simplify
-   (let loop ([u u] [L L])
-     (match L
-       ['() u]
-       [`((,t ,r) . ,rem)
-        (loop (substitute/no-simplify u t r) rem)]))))
+  (cond
+    [(null? L) u]
+    [else
+     (define changed? #f)
+     (define new-u
+       (let loop ([u u] [L L])
+         (match L
+           ['() u]
+           [`((,t ,r) . ,rem)
+            (define-values (new-u ch?)
+              (substitute/no-simplify+? u t r))
+            (when ch? (set! changed? #t))
+            (loop new-u rem)])))
+     (if changed?
+       (automatic-simplify new-u)
+       u)]))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: Apply automatic-simplify only if a change has been detected?
+;; automatic-simplify is triggerred only if any change has been made.
 ;; TODO: to speed up, specialized variant that just substitutes
 ;; TODO: also allow for a hash table.
 ;; symbols with eq?, and sort the symbols(not sure it's worth it)
 ;; u : tree
-;; S : assoc list, but instead of cons pairs, it takes lists '(id val)
+;; S : 'assoc' list, but instead of cons pairs, it takes lists '(id val)
 (define (concurrent-substitute u S [=? equal?])
-  (automatic-simplify
-   (let loop ([u u])
-     (cond [(assoc u S =?) => (λ (p) (loop (cadr p)))] ; need to recur 
-           [(list? u)         (map loop u)]
-           [else              u]))))
+  (cond
+    [(null? S) u]
+    [else
+     (define changed? #f)
+     (define new-u
+       (let loop ([u u])
+         (cond [(assoc u S =?) => (λ (p)
+                                    (set! changed? #t)
+                                    (cadr p))]
+               [(list? u)         (map loop u)]
+               [else              u])))
+     (if changed?
+       (automatic-simplify new-u)
+       u)]))
+
+;; like concurrent-substitute, but also recurses inside the newly substituted
+;; value in case more substitutions apply.
+;; Alternatively, we could first apply all substitutions inside S recursively,
+;; and then just do concurrent-substitute. Not sure which is best.
+;; Reduction is applied only if a change has been made.
+(define (recurrent-substitute u S [=? equal?])
+  (cond
+    [(null? S) u]
+    [else
+     (define changed? #f)
+     (define new-u
+       (let loop ([u u])
+         (cond [(assoc u S =?)
+                =>
+                (λ (p)
+                  (set! changed? #t)
+                  ; Substitute also inside the newly substituted value.
+                  ; TODO: we could cache this value in case it comes up again?
+                  (loop (cadr p)))]
+               [(list? u) (map loop u)]
+               [else      u])))
+    (if changed?
+      (automatic-simplify new-u)
+      u)]))
 
 ;; Like concurrent-apply, but the substitutions are given as a dictionary.
 ;; Substitutions apply only to symbols, and substitutions are not done
@@ -104,7 +168,7 @@
 
   ;; Recur through the substitutions too.
   (check-equal?
-   (concurrent-substitute '(+ a b) '([a (+ b 2)] [b c]))
+   (recurrent-substitute '(+ a b) '([a (+ b 2)] [b c]))
    (+ (* 2 'c) 2)))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

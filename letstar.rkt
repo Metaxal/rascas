@@ -27,7 +27,8 @@
 (define _let*
   (match-lambda*
     [`( ,(list bindings ...) ,body)
-     ;; Recursively reduce the bindings if possible (possibly after a substitution).
+     ;; Recursively reduce the bindings to atomic expressions if possible,
+     ;; and substitute back in if reduced.
      (define-values (subst new-bindings)
        (for/fold ([subst '()] ; substitution list (not an assoc)
                   [new-bindings '()]) ; new list of binding to keep in let*
@@ -35,14 +36,18 @@
          (define new-val (concurrent-substitute (cadr bind) subst))
          (define new-bind (list (car bind) new-val))
          (if (pair? new-val)
+           ; Still a pair, not reduced enough, we keep the old binding.
            (values subst (cons new-bind new-bindings))
+           ; Not a pair, that's reduced enough, remove the binding and
+           ; add a substitution.
            (values (cons new-bind subst) new-bindings))))
-     (define new-body (concurrent-substitute body subst))
+     (define new-body
+       (concurrent-substitute body subst))
      
      #;(debug bindings body subst new-bindings)
 
      ;; Now check if a binding is used only once, in which case it should be
-     ;; substituted back.
+     ;; substituted back in, and remove bindings that are not used anymore.
      (define counts (ids-occurrences (map car new-bindings)
                                      (list new-bindings new-body)))
      (define-values (subst2 new-bindings2)
@@ -56,24 +61,37 @@
                [(= 2 c) ; id is used only once, this is wasteful
                 (values (cons bind subst) new-bindings)]
                [else (values subst (cons bind new-bindings))])))
-     (define new-body2 (concurrent-substitute new-body subst2))
+     (define new-body2 (recurrent-substitute new-body subst2))
      ;; Also apply the substitution to the new bindings.
-     ;; (bindings are in reverse order, new-bindings2 in correct order,
+     ;; (bindings is in reverse order, new-bindings2 is in correct order,
      ;; and so is new-bindings3).
      (define new-bindings3
        (for/list ([bind (in-list new-bindings2)])
          (list (car bind)
-               (concurrent-substitute (cadr bind) subst2))))
+               (recurrent-substitute (cadr bind) subst2))))
 
      #;(debug subst2 new-bindings2 new-bindings3)
 
      ;; Reconstruct the let* form, or remove it if not needed anymore.
-     (if (null? new-bindings3)
-       new-body2
-       `(let* ,new-bindings3 ,new-body2))]
+     ;; Make sure the bindings are in the best order.
+     (let ([bindings (sort-bindings new-bindings3)]
+           [body new-body2])
+       (if (null? bindings)
+       body
+       `(let* ,bindings ,body)))]
     
     [other (error "_let* bad form" other)]))
 (register-function 'let* _let*)
+
+;; Sort bindings to the most computationally efficient order, which is the dependency order.
+;; May be a little expensive?
+(define (sort-bindings bindings)
+  (define ids (map car bindings))
+  (sort bindings
+        ; 1 before 2 if id1 appears in h2
+        (λ (id.h1 id.h2) (> (hash-ref (cdr id.h2) (car id.h1)) 0))
+        #:key (λ (b) (cons (car b) (ids-occurrences ids (cadr b))))
+        #:cache-keys? #t))
 
 
 ;; New bindings are placed after the existing top-level bindings (if any).
@@ -138,7 +156,10 @@
     (cond
       [(or (not best-count) ; empty hash
            (= 1 best-count)) ; Can't reduce anything.
-       (automatic-simplify tree)]
+       ;; Trigger automatc-simplify only if any change has been made.
+       (if (= idx first-idx)
+         tree
+         (automatic-simplify tree))]
       [else
        (define id (symbol-format "~a~a" prefix idx))
 
@@ -179,7 +200,11 @@
       [(or (not best-n)
            (<= best-n 1))
        ; Nothing more to do.
-       (automatic-simplify tree)]
+       ; automatic-simplify is triggerred only if any change has been made.
+       #;(debug tree)
+       (if (= idx 0)
+         tree
+         (automatic-simplify tree))]
       [else
        (define x (car best-p))
        (define y (cdr best-p))
@@ -213,11 +238,13 @@
        (define args (map loop (rest tree)))
        (define-values (new-args _rm not-rm)
          (remove-all+ from-subtrees args))
-       ; Both x and y have been removed.
        (if (null? not-rm)
+         ; Both x and y have been removed.
          ; Don't apply automatic-reduction here as the let* is yet incomplete,
          ; and some bindings may be unrightfully removed.
          (cons op (sort (cons new-subtree new-args) order-relation))
+         ; We need to sort in case any change has been made below.
+         ; TODO: sort only if any change occurred.
          (cons op (sort args order-relation)))]
       [(list? tree) (map loop tree)]
       [else tree])))
@@ -237,9 +264,9 @@
      (define subst
        (for/fold ([subst '()]) ; substitution list (not an assoc)
                  ([bind (in-list bindings)])
-         (define new-val (concurrent-substitute (cadr bind) subst))
+         (define new-val (recurrent-substitute (cadr bind) subst))
          (cons (list (car bind) new-val) subst)))
-     (concurrent-substitute body subst)]
+     (recurrent-substitute body subst)]
     [else u]))
 
 (module+ test
@@ -260,7 +287,13 @@
    '(let* ((_w0 (op2 a b))
            (_w1 (op1 _w0 _w0)))
       (op3 _w1 _w1)))
-  
+
+  (check-equal? (_let* `([a x] [b y] [c (* z z)])
+                       '(+ a b c))
+                '(+ x y (^ z 2)))
+  (check-equal? (_let* `([a x] [b y] [c ,(* 'z 'z)])
+                       (* 'c (+ 'a 'b 'c)))
+                '(let* ((c (^ z 2))) (* c (+ c x y))))
   (check-equal? (_let* '() (+ 'a 2)) (+ 'a 2))
   (check-equal? (_let* '([a 5]) (+ 'a 2)) 7)
   (check-equal? (_let* '([a 5] [b a] [c (+ b a)]) (+ 'a 'b 'c))
@@ -333,6 +366,29 @@
      (sin (* (^ a 2) (^ (+ b x) 2)))
      (+ b x)))
 
+  ;; When extracting from the bindings,
+  ;; the new binding must be above, not after.
+  (check-equal?
+   (contract-let*
+    #:prefix '_y
+    (_let* `([c ,(* (+ 'a 'b) (exp (+ 'a 'b)))])
+           (* 'c (log 'c))))
+   '(let* ([_y0 (+ a b)]
+           [c (* _y0 (exp _y0))])
+      (* c (log c))))
+
+  ;; The new binding must be in the middle of the list(!)
+  (check-equal?
+   (contract-let*
+    #:prefix '_y
+    (_let* `([a ,(* 'b (exp 'b))]
+             [c ,(* (^ 'a (+ 'a 'b)) (exp (^ 'a (+ 'a 'b))))])
+           (* 'c (log 'c))))
+   `(let* ([a ,(* 'b (exp 'b))]
+           [_y0 (^ a (+ a b))]
+           [c (* _y0 (exp _y0))])
+      (* c (log c))))
+
   (check-equal?
    (expand-let*
     (contract-let*/ascovars
@@ -362,83 +418,4 @@
     #:prefix '_w)
    '(let* ((_w*3 (* 2 aa b c d e)))
       (op1 (* _w*3 t) (* _w*3 x))))
-  )
-
-
-;; TODO: derivative through let*
-;;  either expand, derivate, contract, or
-;;  derivate sub-expressions with the binding.
-;; d/dx (let* ([a <a(x)>] [b <b(x)>] ...) <f(a, b, ... x)>)
-;; is syntactically df/dx + da/dx df/da + db/dx df/db...
-;; https://en.wikipedia.org/wiki/Chain_rule#Multivariable_case
-;; TODO: autodiff(?)
-;;  (Can we do batch optimization with autodiff?)
-;; https://stats.stackexchange.com/questions/224140/step-by-step-example-of-reverse-mode-automatic-differentiation
-
-(module+ drracket
-  (require "derivative.rkt")
-  (define f '(cos (exp (sin (log (+ (^ x 2) (* 3 y) z))))))
-
-  (define xp1
-    (list (derivative f 'x)
-          (derivative f 'y)
-          (derivative f 'z)))
-
-  (define lifted-xp1 (contract-let* xp1 #:prefix 'X_))
-
-  lifted-xp1
-
-  (list (tree-size xp1)
-        '---reduced-to--->
-        (tree-size lifted-xp1))
-
-  )
-
-(module+ drracket
-  (require "derivative.rkt"
-           "arithmetic.rkt"
-           "trig-functions.rkt")
-  (newline)
-  (derivative (cos (log (sin (exp (cos (sqr (* (+ 'x 'b) 'a)))))))
-              'x)
-  #;'(*
-      2
-      (^ a 2)
-      (cos (exp (cos (* (^ a 2) (^ (+ b x) 2)))))
-      (exp (cos (* (^ a 2) (^ (+ b x) 2))))
-      (^ (sin (exp (cos (* (^ a 2) (^ (+ b x) 2))))) -1)
-      (sin
-       (log (sin (exp (cos (* (^ a 2) (^ (+ b x) 2)))))))
-      (sin (* (^ a 2) (^ (+ b x) 2)))
-      (+ b x))
-  (newline)
-  (contract-let*
-   (derivative (cos (log (sin (exp (cos (sqr (* (+ 'x 'b) 'a)))))))
-               'x)
-   #:prefix '_y)
-  #;  
-  '(let* ((_y0 (* (^ a 2) (^ (+ b x) 2)))
-          (_y1 (exp (cos _y0)))
-          (_y2 (sin _y1)))
-     (*
-      2
-      _y1
-      (^ _y2 -1)
-      (^ a 2)
-      (cos _y1)
-      (sin _y0)
-      (sin (log _y2))
-      (+ b x)))
-
-  ; let* doesn't look into products and sums for now:
-  (newline)
-  (contract-let*
-   '(+ (* a b c d e t) (* a b c d e x) (* a b c d e y) (* a b c d e z)))
-
-  ; but this one should compress:
-  (contract-let*/ascovars
-     '(list (* a b c d e t) (* a b c d e x) (* a b c d e y) (* a b c d e z)
-            (+ a b c d e t) (+ a b c d e x) (+ a b c d e y) (+ a b c d e z))
-     #:prefix '_w)
-
   )
