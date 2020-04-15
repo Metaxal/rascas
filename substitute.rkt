@@ -46,11 +46,11 @@
 ;; TODO: Apply automatic-simplify only if a change has been detected?
 (define (sequential-substitute u L)
   (automatic-simplify
-   (match L
-     ['() u]
-     [`((,t ,r) . ,reste)
-      (sequential-substitute (substitute u t r)
-                             reste)])))
+   (let loop ([u u] [L L])
+     (match L
+       ['() u]
+       [`((,t ,r) . ,rem)
+        (loop (substitute/no-simplify u t r) rem)]))))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
