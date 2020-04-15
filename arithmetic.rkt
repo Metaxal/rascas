@@ -12,7 +12,7 @@
          racket/list)
 
 (provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn
-         exp log ! (rename-out [! factorial]) 
+         exp log ! (rename-out [! factorial])
          expand-main-op
          expand-exp
          expand-power
@@ -127,6 +127,8 @@
 
 ;;; The following are not primitives and so don't need derivatives.
 
+;; This is not really 'algorithmic' as it's not real flow-control.
+;; TODO: avoid doing `test` twice. Use a _let*?
 (define (_if test y n)
   (+ (* test y)
      (* (- 1 test) n)))
@@ -665,3 +667,4 @@
 (%o50)                              log(4)
 |#
   )
+

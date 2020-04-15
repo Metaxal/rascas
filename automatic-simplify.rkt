@@ -6,7 +6,6 @@
          ->inexact)
 
 (require "misc.rkt"
-         "arithmetic.rkt"
          #;(prefix-in rkt: (only-in math/base euler.0))
          (prefix-in rkt: (only-in racket/math pi)))
 
@@ -50,7 +49,8 @@
   (automatic-simplify u #t))
 
 (module+ test
-  (require (prefix-in rkt: (only-in racket/base * log)))
+  (require (prefix-in rkt: (only-in racket/base * log))
+           "arithmetic.rkt")
   (check-equal? (->inexact 'x) 'x)
   (check-equal? (->inexact 2) 2.)
   (check-equal? (->inexact (log 2)) (rkt:log 2))

@@ -149,6 +149,9 @@
             (tree-size (cdr tree)))]
         [else 1]))
 
+;; Returns a dictionary of occurrences of the given ids in tree.
+;; ids : (listof symbol?)
+;; tree : any/c
 (define (ids-occurrences ids tree)
   (define h (make-hasheq))
   (for ([id (in-list ids)])

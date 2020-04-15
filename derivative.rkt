@@ -5,11 +5,11 @@
 (provide derivative)
 
 (require "misc.rkt"
+         "algorithmic.rkt"
          "arithmetic.rkt"
          "contains.rkt"
          racket/list
          racket/match)
-
 
 (define (derivative u x)
   (cond
@@ -37,7 +37,40 @@
         (define *ws `(* . ,ws))
         (+ (* v (derivative *ws x))
            (* *ws (derivative v x)))]
-
+       ;;; let*
+       [`(let* () ,body)
+        (derivative body x)]
+       [`(let* ,(list (list id sub) bindings ...) ,body)
+        ;; https://en.wikipedia.org/wiki/Chain_rule#Multivariable_case
+        (when (equal? id x)
+                          (error "let*: Cannot differenciate for a bound id:" id))
+        (define dsub (derivative sub x))
+        (define sublet `(let* ,bindings ,body))
+        (if (zero-number? dsub)
+          (derivative sublet x)
+          ; Chain rule
+          (_let* `([,id ,sub])
+                 (+ (derivative sublet x)
+                    (* dsub (derivative sublet id)))))]
+       #;[`(let* ,(list bindings ...) ,body)
+        ;; https://en.wikipedia.org/wiki/Chain_rule#Multivariable_case
+        (_let* bindings
+               (apply +
+                      (derivative body x)
+                      (for/list ([b (in-list bindings)])
+                        (define id (car b))
+                        (when (equal? id x)
+                          (error "let*: Cannot differenciate for a bound id:" id))
+                        (define sub (cadr b))
+                        (define dsub (derivative sub x))
+                        (if (zero-number? dsub)
+                          0
+                          ; Chain rule.
+                          (* dsub (derivative body id))))))]
+       [`(list . ,args)
+        ;; WARNING: list can cause problems when differentiating, e.g.,
+        ;; (derivative '(list a b c) 'x) = 0, but should be '(list 0 0 0) instead?
+        (apply _list (map (λ (arg) (derivative arg x)) args))]
        ;; General case.
        [`(,op . ,args)
         ; The number of derivs must be equal to the number of args
@@ -45,8 +78,9 @@
         (if dfs
           (begin
             (unless (= (length args) (length dfs))
-              (error "The number of derivatives does not match the number of arguments"
-                     dfs args))
+              (error "The number of derivatives does not match the number of arguments."
+                     'function: op 'n-derivs: (length dfs) 'n-args: (length args)))
+            #;(displayln args)
             (apply + (map (λ (df arg)
                           (* (apply df args)
                              (derivative arg x)))
@@ -61,9 +95,15 @@
 ;; This can also be used to take the derivative after a substitution rather than before.
 (register-function 'derivative derivative)
 
+;; TODO: extend this to multiple arguments and export
+#;
+(define (derivative->function f sym)
+  (tree->function (derivative f sym) sym))
+
 (module+ test
   (require rackunit
            "automatic-simplify.rkt"
+           "distribute.rkt"
            "substitute.rkt"
            "trig-functions.rkt"
            "special-functions.rkt")
@@ -118,11 +158,48 @@
                1.
                0.01
                )))
+
+  ;;; list
+
+  (check-equal? (derivative (_list (* 'x 2) (^ 'x 'a) (log 'x)) 'x)
+                '(list 2 (* a (^ x (+ -1 a))) (^ x -1)))
+
+  (check-equal? (derivative (_list (* 'x 2) (^ 'x 'a) (log 'x)) 'a)
+                '(list 0 (* (log x) (^ x a)) 0))
+
+  ;;; let*
+  (check-equal? (derivative (_let* `([a ,(+ 'x 2)])
+                                   (* (+ 1 'a) (+ 2 'a))) 'x)
+                '(+ 3 (* 2 (+ 2 x))))
+  (check-equal? (derivative (expand-let* (_let* `([a ,(+ 'x 2)])
+                                                (* (+ 1 'a) (+ 2 'a)))) 'x)
+                '(+ 7 (* 2 x)))
+  (check-exn exn:fail?
+             (λ () (derivative (_let* `([a ,(+ 'x 2)]
+                                        [b ,(* 'a 2)])
+                                      (* (+ 1 'b) (+ 2 'a)))
+                               'a)))
+  (check-equal? (derivative (_let* `([a (+ x 2)])
+                                   (* (+ 1 'a) (+ 2 'a))) 'y)
+                0)
+
+  (check-equal? (distribute-product
+                 (expand-let*
+                  (derivative (_let* `([b (* (+ 1 a) (+ 2 a))] [c (* (+ b 1) (+ b 2))] [d c])
+                                     (* (+ 'd 1) (+ 'd 2)))
+                              'a)))
+                (distribute-product
+                 (derivative (expand-let*
+                              (_let* `([b (* (+ 1 a) (+ 2 a))] [c (* (+ b 1) (+ b 2))] [d c])
+                                     (* (+ 'd 1) (+ 'd 2))))
+                             'a)))
+  
   )
 
 ;; This is just a curiosity, although it works quite well.
 ;; Minimalistic derivative based on df(x)/dx = f(x)dlog(f(x))/dx,
 ; and heavily relies a lot on automatic reduction, in particular of the log.
+#;
 (module+ drracket
   
   (define (deriv* u x)

@@ -8,10 +8,9 @@
          Fresnel-S Fresnel-C Fresnel-RS Fresnel-RC)
 
 ;; TODO: a mechanism to add matchers for different functions,
-;; for example (+ (^ (cos x) 2) (^ (sin x) 2) reduce to 1.
+;; for example (+ (^ (cos x) 2) (^ (sin x) 2) reduces to 1.
 ;; or (log (gamma x)) is calculated with rkt:log-gamma.
 ;; The matcher would be on the main operator, here '+.
-;; * Same for derivatives.
 
 ;; https://en.wikipedia.org/wiki/Gamma_function
 (define-simple-function gamma       rkt:gamma)
