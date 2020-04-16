@@ -46,6 +46,9 @@
 
   (define (order-relation u v [already-exchanged? #f])
 
+    (define uop (operator-kind u))
+    (define vop (operator-kind v))
+
     (cond ((and (number? u)
                 (number? v)) ;; O-1
            (< u v))
@@ -54,6 +57,9 @@
                 (symbol? v)) ;; O-2
 
            (symbol<? u v))
+
+          [(eq? 'let* uop)
+           (not (order-relation v (list-ref u 2)))]
 
           ((or (and (product? u)
                     (product? v))
