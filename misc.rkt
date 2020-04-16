@@ -10,6 +10,7 @@
 
 (provide pi
          debug
+         debug-expr
          symbol-format
          try-apply-number
          define-simple-function
@@ -96,6 +97,11 @@
   (begin
     (printf "~a = ~a\n" 'expr expr)
     ...))
+
+(define-syntax-rule (debug-expr expr)
+  (let ([res expr])
+    (printf "~a = ~a\n" 'expr res)
+    res))
 
 ;=============;
 ;=== Lists ===;
@@ -416,23 +422,24 @@
       ...
       (loop))))
 
+;; This is as efficient as a named let.
 (define-sequence-syntax in-list+rest
-    (lambda () #'in-list+rest/proc)
-    (lambda (stx)
-      (syntax-case stx ()
-        [[(x r) (_ lst)]
-         #'[(x r)
-            (:do-in
-              ([(l) lst])
-              (unless (list? l)
-                (raise-argument-error 'in-list+rest "list?" l))
-              ([l l])
-              (not (null? l))
-              ([(x r) (values (car l) (cdr l))])
-              #true
-              #true
-              [r])]]
-        [_ #f])))
+  (lambda () #'in-list+rest/proc)
+  (lambda (stx)
+    (syntax-case stx ()
+      [[(x r) (_ lst)]
+       #'[(x r)
+          (:do-in
+           ([(l) lst])
+           (unless (list? l)
+             (raise-argument-error 'in-list+rest "list?" l))
+           ([l l])
+           (not (null? l))
+           ([(x r) (values (car l) (cdr l))])
+           #true
+           #true
+           [r])]]
+      [_ #f])))
 
 (define (in-list+rest/proc l)
   (for/list ([(x r) (in-list+rest l)]) (list x r)))

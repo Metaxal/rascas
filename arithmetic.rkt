@@ -13,6 +13,7 @@
 
 (provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn
          exp log ! (rename-out [! factorial])
+         >0 >=0 _> _< _if
          expand-main-op
          expand-exp
          expand-power
@@ -62,7 +63,7 @@
     [`(sgn ,v) (sgn v)] ; remove one level and try again
     [else `(sgn ,u)]))
 (register-function 'sgn sgn)
-(register-derivative 'sgn (λ (x) (* 2 (dirac x)))) ; by limit 
+(register-derivative 'sgn (λ (x) (* 2 (dirac x)))) ; by lim_{h->0} (f(x+h)-f(x-h))/(2h)
 
 (module+ test
   (check-equal? (sgn 0) 0)

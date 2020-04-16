@@ -2,14 +2,28 @@
 
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
-(provide derivative)
+(provide derivative
+         derivative/proc)
 
 (require "misc.rkt"
          "algorithmic.rkt"
          "arithmetic.rkt"
          "contains.rkt"
+         "substitute.rkt"
          racket/list
          racket/match)
+
+;;; In rascas we consider symmetric derivatives lim_{h->0} (f(x+h)-f(x-h))/(2h):
+;;; https://en.wikipedia.org/wiki/Symmetric_derivative
+;;; which are defined also for non-continuous functions
+;;; such as |x| or sgn(x), and have better numerical stability.
+
+;;; TODO: 'AutoDiff', backprop:
+;;;  take as input a substitution dictionary,
+;;;  and substitute while differentiating with the
+;;;  chain rule to reduce all expressions to numbers
+;;;  and be computationally as efficient as calculating
+;;;  the forward pass.
 
 (define (derivative u x)
   (cond
@@ -38,35 +52,26 @@
         (+ (* v (derivative *ws x))
            (* *ws (derivative v x)))]
        ;;; let*
-       [`(let* () ,body)
-        (derivative body x)]
-       [`(let* ,(list (list id sub) bindings ...) ,body)
-        ;; https://en.wikipedia.org/wiki/Chain_rule#Multivariable_case
-        (when (equal? id x)
-                          (error "let*: Cannot differenciate for a bound id:" id))
-        (define dsub (derivative sub x))
-        (define sublet `(let* ,bindings ,body))
-        (if (zero-number? dsub)
-          (derivative sublet x)
-          ; Chain rule
-          (_let* `([,id ,sub])
-                 (+ (derivative sublet x)
-                    (* dsub (derivative sublet id)))))]
-       #;[`(let* ,(list bindings ...) ,body)
-        ;; https://en.wikipedia.org/wiki/Chain_rule#Multivariable_case
-        (_let* bindings
-               (apply +
-                      (derivative body x)
-                      (for/list ([b (in-list bindings)])
-                        (define id (car b))
-                        (when (equal? id x)
-                          (error "let*: Cannot differenciate for a bound id:" id))
-                        (define sub (cadr b))
-                        (define dsub (derivative sub x))
-                        (if (zero-number? dsub)
-                          0
-                          ; Chain rule.
-                          (* dsub (derivative body id))))))]
+       [`(let* (,orig-bindings ...) ,body)
+        (define new-body
+          ;; Recursively apply the chain rule for each id, unless d.id / d.x = 0.
+          (let bind-loop ([bindings orig-bindings] [x x])
+            (cond
+              [(null? bindings)
+               (derivative body x)]
+              [else
+               (define-values (bid btree) (apply values (first bindings)))
+               (when (equal? bid x)
+                 (error "let*: Cannot differentiate for a bound id:" bid))
+               (define dbtree (derivative btree x))
+               (if (zero-number? dbtree)
+                 (bind-loop (rest bindings) x)
+                 (+ (bind-loop (rest bindings) x)
+                    (* dbtree
+                       (bind-loop (rest bindings) bid))))])))
+        ; Reconstruct the let (and maybe do some simplifications)
+        ; TODO: Here would be the right place to do a contract-let* actually?
+        (_let* orig-bindings new-body)]
        [`(list . ,args)
         ;; WARNING: list can cause problems when differentiating, e.g.,
         ;; (derivative '(list a b c) 'x) = 0, but should be '(list 0 0 0) instead?
@@ -95,10 +100,22 @@
 ;; This can also be used to take the derivative after a substitution rather than before.
 (register-function 'derivative derivative)
 
-;; TODO: extend this to multiple arguments and export
-#;
-(define (derivative->function f sym)
-  (tree->function (derivative f sym) sym))
+;; Returns a racket procedure of 1 argument which is the derivative of the tree
+;; (f sym) at sym.
+;; f must be a racket procedure of 1 argument that produces a tree when
+;; applied to a tree.
+;; If inexact? is not #f, all numbers are turned into inexact numbers.
+(define (derivative/proc f #:inexact? [inexact? #f])
+  (unless (procedure-arity-includes? f 1 #t)
+    (raise-argument-error 'derivative/proc "A function of 1 argument" f))
+  (define sym (gensym))
+  (tree->procedure (derivative (f sym) sym) sym #:inexact? inexact?))
+
+;; Useful to check equality
+(define (numeric-derivative f [ε 0.000001])
+  (λ (x)
+    (/ (- (f (+ x ε)) (f (- x ε)))
+       (* 2 ε))))
 
 (module+ test
   (require rackunit
@@ -107,6 +124,20 @@
            "substitute.rkt"
            "trig-functions.rkt"
            "special-functions.rkt")
+
+  ;; Tool to test the symbolic derivative value against the numeric one
+  ;; f must be a procedure of 1 argument
+  (define (check-derivative f [xs (build-list 10 (λ (i) (/ (- (random) .5)
+                                                           (random))))])
+    (define dfnum (numeric-derivative f))
+    (define dfsym (derivative/proc f))
+    (for ([v (in-list xs)])
+      (check-= (->inexact
+                (sqr (- (dfnum v)
+                        (dfsym v))))
+               0.
+               0.001)))
+  
   (check-equal? (derivative (+ (* 3 (^ 'x 2)) (* 4 'x)) 'x)
                 (+ (* 6 'x) 4))
   (check-equal? (derivative (/ 3 'x) 'x)
@@ -138,28 +169,15 @@
     (check-equal? bad-deriv '(derivative (__unknown-deriv (* x 2)) x))
     (register-function '__unknown-deriv (λ (x) (sqr x)))
     (check-equal? (automatic-simplify bad-deriv)
-                  (* 8 'x)))
-  
+                  (* 8 'x))) 
 
-  (define (make-df f [h 0.001])
-    (λ (x)
-      (->inexact
-       (/ (- (gamma (+ x h)) (gamma (- x h)))
-          (* 2 h)))))
+  (check-derivative gamma (build-list 10 (λ (i) (* 10 (random)))))
 
-  (let ([f gamma])
-    (define dfnum (make-df f))
-    (define dfsym (derivative (f 'x) 'x))
-    (for ([i (in-range 10)])
-      (define x (* 10 (random)))
-      (check-= (->inexact
-                (/ (dfnum x)
-                   (substitute dfsym 'x x)))
-               1.
-               0.01
-               )))
 
   ;;; list
+
+  (check-equal? (derivative (_list 'x 'y 'x 'z) 'x)
+                '(list 1 0 1 0))
 
   (check-equal? (derivative (_list (* 'x 2) (^ 'x 'a) (log 'x)) 'x)
                 '(list 2 (* a (^ x (+ -1 a))) (^ x -1)))
@@ -174,6 +192,7 @@
   (check-equal? (derivative (expand-let* (_let* `([a ,(+ 'x 2)])
                                                 (* (+ 1 'a) (+ 2 'a)))) 'x)
                 '(+ 7 (* 2 x)))
+  ; error: Cannot differentiate for a bound id (a)
   (check-exn exn:fail?
              (λ () (derivative (_let* `([a ,(+ 'x 2)]
                                         [b ,(* 'a 2)])
@@ -193,7 +212,80 @@
                               (_let* `([b (* (+ 1 a) (+ 2 a))] [c (* (+ b 1) (+ b 2))] [d c])
                                      (* (+ 'd 1) (+ 'd 2))))
                              'a)))
-  
+
+  (check-not-exn
+   (λ () (derivative
+          '(let* ((_u0 (+ (* _w_0_0_0 a) 1))
+                  (_w_out_1_0 (* 0.5 _u0 (+ 1 (sgn _u0))))
+                  (_u1 4)
+                  (_w_out_1_1 (* 0.5 _u1 (+ 1 (sgn _u1))))
+                  (_w_out_2_0
+                   (+ 1.0 (exp (* -1 (+ (* 3 _w_out_1_0) (* 2 _w_out_1_1))))))
+                  (_w_out_2_1
+                   (+ 1.0 (exp (* -1 (+ (* 4 _w_out_1_0) (* 5 _w_out_1_1))))))
+                  (_u2 (+ (* 3 _w_out_2_0) (* 2 _w_out_2_1))))
+             (+ (* 0.5 _u2 _w_3_0_0 (+ 1 (sgn _u2))) (* 0.5 _u2 _w_3_0_1 (+ 1 (sgn _u2)))))
+          '_w_0_0_0)))
+
+  (check-equal?
+   (contract-let*
+    #:prefix '_g
+    (derivative
+     '(let* ((a (exp x))
+             (b (+ 1.0 a))
+             (c (+ -1.0 a))
+             (d (^ b -2)))
+        (* a (+ (^ b -1) (* -1 d c) (* -1 d a) (* (+ (* -1 d) (* 2 (^ b -3) c)) a))))
+     'x))
+   '(let* ((_g4 (exp x))
+           (b (+ 1.0 _g4))
+           (c (+ -1.0 _g4))
+           (_g0 (^ b -3))
+           (_g3 (^ b -2))
+           (_g1 (* 2 _g0 c))
+           (_g2 (* -1 _g3)))
+      (*
+       _g4
+       (+
+        (* (+ _g1 _g2) _g4)
+        (* -1 _g3 _g4)
+        (* (+ _g1 (* -2 _g3)) _g4)
+        (* _g4 (+ _g2 (* 2 _g0 _g4)))
+        (^ b -1)
+        (* -1 _g3 c)
+        (* -2 _g0 _g4 (+ (* -2 _g4) (* -1 c)))
+        (* _g4 (+ (* -1 _g3) (* -6 _g4 (^ b -4) c)))))))
+
+  (check-derivative
+   (λ (x)
+     `(let* ((a (exp ,x))
+             (b (+ 1.0 a))
+             (c (+ -1.0 a))
+             (d (^ b -3))
+             (e (^ b -2))
+             (f (* 2 d c))
+             (g (* -1 e)))
+        (*
+         a
+         (+
+          (^ b -1)
+          (* -1 e c)
+          (* -1 e a)
+          (* (+ (* -2 e) f) a)
+          (* (+ (* -1 e) f) a)
+          (* -2 d a (+ (* -1 c) (* -2 a)))
+          (* a (+ g (* 2 d a)))
+          (* a (+ g (* -6 (^ b -4) c a))))))))
+
+
+  (check-equal? ((derivative/proc sqr) 'a)
+                (* 'a 2))
+  (check-equal? ((derivative/proc sqr) 2)
+                4)
+  (check-equal? ((derivative/proc log) 1/2)
+                2)
+  (check-equal? ((derivative/proc log #:inexact? #t) (sqrt 2))
+                (->inexact (/ (sqrt 2))))
   )
 
 ;; This is just a curiosity, although it works quite well.
