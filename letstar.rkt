@@ -83,16 +83,38 @@
     [other (error "_let* bad form" other)]))
 (register-function 'let* _let*)
 
-;; Sort bindings to the most computationally efficient order, which is the dependency order.
-;; May be a little expensive?
+;; Sort bindings in dependency order.
+;; Not only useful for computational reasons, but derivative may fail
+;; if not sorted in chain-rule order.
 (define (sort-bindings bindings)
-  (define ids (map car bindings))
-  (sort bindings
-        ; 1 before 2 if id1 appears in h2
-        (λ (id.h1 id.h2) (> (hash-ref (cdr id.h2) (car id.h1)) 0))
-        #:key (λ (b) (cons (car b) (ids-occurrences ids (cadr b))))
-        #:cache-keys? #t))
+  (define bind-hash (make-hasheq))
+  (for ([b (in-list bindings)])
+    (hash-set! bind-hash (car b) (cadr b)))
+  (define indices (make-hasheq))
+  (define (get-idx id)
+    (hash-ref!
+     indices id
+     ;; First time query, get the max idx of the ids in expression tree and add 1.
+     (λ ()
+       (define tree (hash-ref bind-hash id))
+       (+ 1
+          ; Find the max idx of the ids in the tree.
+          (let loop ([tree tree] [idmax 0])
+            (cond [(pair? tree)
+                   (loop (cdr tree)
+                         (loop (car tree) idmax))]
+                  [(symbol? tree)
+                   (if (hash-has-key? bind-hash tree)
+                     (max idmax (get-idx tree))
+                     idmax)]
+                  [else idmax]))))))
+  ; ids with the same index can be safely swapped.
+  (sort bindings < #:key (λ (b) (get-idx (car b)))))
 
+;; Sort failure:
+#;(sort '(10) (λ (a b) (when (= a b) (error "a=b" b)) (< a b))
+        #:key (λ (x) x)
+        #:cache-keys? #t)
 
 ;; New bindings are placed after the existing top-level bindings (if any).
 ;; TODO: Check name collisions + error?
@@ -125,20 +147,33 @@
 ;; in the body, making the evaluation more demanding.
 
 
+(define let*-default-id-prefix
+  (let ([idx 0])
+    (λ ()
+      (set! idx (+ 1 idx))
+      (string-append "__s" (number->string idx) "_"))))
+
+
 ;; Recursively replaces the most used sub-expression (syntactic check) in tree
 ;; with a let* binding and returns the result.
 ;; Returns the original expression if no sub-expression occurs at least twice.
 ;; This is probably not the most efficient implementation.
 (define (contract-let* tree
-                       #:prefix [prefix (gensym)]
+                       #:prefix [prefix (let*-default-id-prefix)]
                        #:idx [first-idx 0])
   (let bind-loop ([tree tree] [idx first-idx])
     (define h (make-hash))
     ;; Count the number of occurrences of each list (really, subtree).
     (let loop ([tree tree])
-      (when (list? tree)
-        (hash-update! h tree add1 0)
-        (map loop tree)))
+      (match tree
+        [`(let* ([,ids ,vals] ...) ,body)
+         ; We can't compress bindings, only expressions
+         (loop body)
+         (for-each loop vals)]
+        [(? list?)
+         (hash-update! h tree add1 0)
+         (for-each loop tree)]
+        [else (void)]))
 
     ;; Find the largest sub-tree that appears the most times.
     ;; 'index' = the expression tree
@@ -174,7 +209,7 @@
 ;; For associative+commutative variadic operators like + and *.
 ;; We care only about non-lists, since lists are dealt with contract-let*.
 ;; op : symbol?
-(define (contract-let*/ascovar tree op #:prefix [prefix (gensym)])
+(define (contract-let*/ascovar tree op #:prefix [prefix (let*-default-id-prefix)])
 
   (let bind-loop ([tree tree] [idx 0])
     ;; Co-occurrence table.
@@ -251,7 +286,7 @@
 
 ;; Another operator could be `list-no-order` (or `set`)
 (define (contract-let*/ascovars tree [ops '(+ *)]
-                                #:prefix [prefix (gensym)])
+                                #:prefix [prefix (let*-default-id-prefix)])
   (for/fold ([tree tree])
             ([op (in-list ops)])
     (contract-let*/ascovar tree op #:prefix (format "~a~a" prefix op))))
@@ -272,6 +307,18 @@
 (module+ test
   (require "arithmetic.rkt"
            "trig-functions.rkt")
+
+  ;; TODO: Make sure than any id has an index that is at least as high
+  ;; as any of its dependencies +1.
+  (check-equal?
+   (remove '(e 5)
+           (sort-bindings
+            '([a (+ b c)]
+              [d (* b c)]
+              [e 5] ; causes problems with `sort` as it doesn't compare with b
+              [b (* c (exp c))])))
+   ; Make sure that b is placed before a and d.
+   '((b (* c (exp c))) (a (+ b c)) (d (* b c))))
 
   (check-equal?
    (variadic-replace '* '(_xx12 _xx14) 'ID
@@ -301,6 +348,18 @@
   (check-equal? (_let* '([a b]) (+ 'a 2)) (+ 'b 2))
   (check-equal? (_let* '([a (+ b 5)]) (+ 'a 2))
                 (+ 'b 7))
+
+  ; nested let
+  (check-equal? (_let* `([a 5])
+                       (+ 3
+                          (_let* `([b 6])
+                                 (* 'a 'b))
+                          (_let* `([c 10])
+                                 (+ 'a 'c))))
+                48)
+
+
+  
   (check-equal? (contract-let* (+ (log (+ 'x 3))
                                   (exp (+ 'x 3))
                                   (^ (+ 'x 3) 'a))
@@ -418,4 +477,46 @@
     #:prefix '_w)
    '(let* ((_w*3 (* 2 aa b c d e)))
       (op1 (* _w*3 t) (* _w*3 x))))
+
+
+  (check-not-exn
+   (λ ()
+     (contract-let*
+      #:prefix '_cc
+      '(list
+        (let* ((_w_out_1_0
+                (* 0.5 (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)) (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))))))
+          (*
+           0.5
+           (list
+            (+
+             (* 2.0 _w_1_0_0 _w_2_0_0 'a 'b)
+             (* 2.0 _w_1_1_0 _w_2_0_1 'c 'd)))
+           (+
+            (* 2 b (dirac (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e))) (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))
+            (* b (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e))))))))
+        (let* ((_w_out_1_0
+                (* 0.5 (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)) (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))))))
+          (*
+           0.5
+           (list
+            (+
+             (* 2.0 _w_1_0_0 _w_2_0_0 'a 'b)
+             (* 2.0 _w_1_1_0 _w_2_0_1 'c 'd)))
+           (+
+            (* 2 c (dirac (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e))) (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))
+            (* c (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))))))))
+      )))
+
+  ;; The problem here is that contract-let* will find ([c (+ a b)]) as
+  ;; something to compress, which is not right.
+  ;; we should look only inside expressions
+  (check-not-exn
+   (λ () (contract-let*
+          #:prefix '_y
+          (+
+           (_let* `([c ,(+ 'a 'b)])
+                  (* 'c (log 'c)))
+           (_let* `([c ,(+ 'a 'b)])
+                  (* 'c 'd (log 'c)))))))
   )
