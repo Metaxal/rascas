@@ -9,7 +9,8 @@
          sequential-substitute
          concurrent-substitute
          recurrent-substitute
-         apply//)
+         apply//
+         tree->procedure)
 
 (require racket/match
          racket/dict
@@ -84,13 +85,14 @@
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; automatic-simplify is triggerred only if any change has been made.
+;; automatic-simplify is triggerred only if any change has been made and simplify? is #t.
 ;; TODO: to speed up, specialized variant that just substitutes
 ;; TODO: also allow for a hash table.
 ;; symbols with eq?, and sort the symbols(not sure it's worth it)
 ;; u : tree
 ;; S : 'assoc' list, but instead of cons pairs, it takes lists '(id val)
-(define (concurrent-substitute u S [=? equal?])
+(define (concurrent-substitute u S [=? equal?]
+                               #:simplify? [simplify? #t])
   (cond
     [(null? S) u]
     [else
@@ -103,7 +105,9 @@
                [(list? u)         (map loop u)]
                [else              u])))
      (if changed?
-       (automatic-simplify new-u)
+       (if simplify?
+         (automatic-simplify new-u)
+         new-u)
        u)]))
 
 ;; like concurrent-substitute, but also recurses inside the newly substituted
@@ -166,20 +170,27 @@
   (check-equal? (substitute (* 'x (+ 1 (/ (sqr 'x)))) 'x -inf.0)
                 -inf.0)
 
-  ;; Recur through the substitutions too.
+  ;; Recurse through the substitutions too.
   (check-equal?
    (recurrent-substitute '(+ a b) '([a (+ b 2)] [b c]))
    (+ (* 2 'c) 2)))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (tree->function f . syms)
+;; Returns a racket procedure from the tree
+;; If inexact? is not #f, all numbers are turned into inexact numbers.
+(define (tree->procedure tree
+                         #:inexact? [inexact? #f]
+                         . syms)
     (λ l
-      ; TODO: check number of args
+      ; TODO: check number of args (map does it though)
       (define subst (map list syms l))
-      (concurrent-substitute f subst)))
+      (define res (recurrent-substitute tree subst))
+      (if inexact?
+        (->inexact res)
+        res)))
 
 (module+ test
-  (check-equal? ((tree->function '(* x (op1 x y)) 'x 'y) 'a 'b)
+  (check-equal? ((tree->procedure '(* x (op1 x y)) 'x 'y) 'a 'b)
                 '(* a (op1 a b))))
 
