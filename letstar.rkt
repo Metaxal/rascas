@@ -10,9 +10,33 @@
 (provide _let*
          contract-let*
          contract-let*/ascovars
-         expand-let*)
+         expand-let*
+         sort-bindings
+         make-make-id
+         default-make-id
+         rebind-let*
+         rebind-all-let*
+         variadic-replace)
 
-(module+ test (require "rackunit.rkt"))
+;;; There are many differences with Scheme/Racket's let*.
+;;; - ids have a more global scope (for now).
+;;; - ids can't shadow previous ids (or it may lead to inconsistencies)
+;;; - there can't be twice the same id in the same let* (which is also shadowing).
+;;; - ids are sorted automatically in dependency order.
+;;; - ...
+
+;;; The make-id mechanism allows to keep consistent naming by making functions
+;;; forward the make-id to other functions.
+
+;; Returns a `make-id` procedure that returns a new id every time it is called.
+(define (make-make-id prefix)
+  (define idx -1) ; first id is 0
+  (λ ()
+    (set! idx (+ 1 idx))
+    (string->symbol (string-append prefix (number->string idx)))))
+
+(define default-make-id (make-make-id "__s_"))
+
 
 ;; The purpose of this 'function' is to remove the binding pairs when the
 ;; value is an atom (and not an expression), since it would take no more room
@@ -86,10 +110,15 @@
 ;; Sort bindings in dependency order.
 ;; Not only useful for computational reasons, but derivative may fail
 ;; if not sorted in chain-rule order.
+;; TODO: Check that the same binding doesn't appear twice?
 (define (sort-bindings bindings)
   (define bind-hash (make-hasheq))
   (for ([b (in-list bindings)])
-    (hash-set! bind-hash (car b) (cadr b)))
+    (define id (car b))
+    (when (hash-has-key? bind-hash id)
+      ; This does *not* check all cases.
+      (error "Duplicate identifier in let*:" id))
+    (hash-set! bind-hash id (cadr b)))
   (define indices (make-hasheq))
   (define (get-idx id)
     (hash-ref!
@@ -117,7 +146,8 @@
         #:cache-keys? #t)
 
 ;; New bindings are placed after the existing top-level bindings (if any).
-;; TODO: Check name collisions + error?
+;; Do NOT trigger a _let* or an automatic-simplify here as sorting all bindings again (and more)
+;; after introducing a single new one is inefficient (do it in batches instead).
 (define (try-merge-let*-bindings bindings body)
   (match body
     ;; If body is a let*, merge the new bindings with the old ones.
@@ -146,72 +176,107 @@
 ;; In the second one, b and c are substituted in a only after a has been substituted
 ;; in the body, making the evaluation more demanding.
 
+;; Replaces the ids with fresh ids in bindings and body to produce a new let* form.
+(define (rebind-let* alet* #:make-id [make-id default-make-id])
+  (match alet*
+    [`(let* ,(list bindings ...) ,body)
+     (define n-bindings (length bindings))
+     (define new-ids (build-list n-bindings (λ (i) (make-id))))
+     (define old-ids (map car bindings))
+     (define subst (map list old-ids new-ids))
+     ;; No need to apply let*?
+     `(let* ,(concurrent-substitute bindings subst #:simplify? #f)
+        ,(concurrent-substitute body subst #:simplify? #f))]))
 
-(define let*-default-id-prefix
-  (let ([idx 0])
-    (λ ()
-      (set! idx (+ 1 idx))
-      (string-append "__s" (number->string idx) "_"))))
-
+;; Rebinds all let*s in the tree to ensure all bindings have different names,
+;; and returns the new tree.
+;; if `prefix` is not #f, then the `make-id` argument is discarded
+;; and a new make-id is created using the prefix,
+;; otherwise `make-id` is used to generate the ids.
+(define (rebind-all-let* tree [prefix #f] #:make-id [make-id default-make-id])
+  (when prefix
+    (set! make-id (make-make-id (format "~a" prefix))))
+  (define rebind-idx 0)
+  (let loop ([tree tree])
+    (match tree
+      [`(let* ,(list bindings ...) ,body)
+       ;; First we must rebinding all bindings below before
+       ;; rebinding the current let*.
+       (define new-bindings
+         (for/list ([b (in-list bindings)])
+           (list (car b) (loop (cadr b)))))
+       (define new-body (loop body))
+       (set! rebind-idx (+ rebind-idx 1))
+       (rebind-let* `(let* ,new-bindings ,new-body) #:make-id make-id)]
+      [(? list?)
+       (map loop tree)]
+      [else tree])))
 
 ;; Recursively replaces the most used sub-expression (syntactic check) in tree
 ;; with a let* binding and returns the result.
 ;; Returns the original expression if no sub-expression occurs at least twice.
 ;; This is probably not the most efficient implementation.
-(define (contract-let* tree
-                       #:prefix [prefix (let*-default-id-prefix)]
-                       #:idx [first-idx 0])
-  (let bind-loop ([tree tree] [idx first-idx])
-    (define h (make-hash))
-    ;; Count the number of occurrences of each list (really, subtree).
-    (let loop ([tree tree])
-      (match tree
-        [`(let* ([,ids ,vals] ...) ,body)
-         ; We can't compress bindings, only expressions
-         (loop body)
-         (for-each loop vals)]
-        [(? list?)
-         (hash-update! h tree add1 0)
-         (for-each loop tree)]
-        [else (void)]))
+(define (contract-let* tree)
+  (let batch-loop ([orig-tree tree] [rebind? #t])
+    ;; First rebind all sublet* (apart from top-level) in case
+    ;; there are name collisions between two branches.
+    (let bind-loop ([tree (if rebind? (rebind-all-let* orig-tree) orig-tree)]
+                    [iter 0])
+      ;; Count the number of occurrences of each list (really, subtree).
+      ;; Doing this at each iteration is probably not the most efficient strategy.
+      (define h (make-hash))
+      (let loop ([tree tree])
+        (match tree
+          [`(let* ([,ids ,vals] ...) ,body)
+           ; We can't compress ids, only expressions
+           (loop body)
+           (for-each loop vals)]
+          [(? list?)
+           (hash-update! h tree add1 0)
+           (for-each loop tree)]
+          [else (void)]))
 
-    ;; Find the largest sub-tree that appears the most times.
-    ;; 'index' = the expression tree
-    (define-values (best-count _best-k best-subtree)
-      (hash-best+key+index h (λ (n.s1 n.s2)
-                               (or (> (car n.s1) (car n.s2))
-                                   (and (= (car n.s1) (car n.s2))
-                                        (> (cdr n.s1) (cdr n.s2)))))
-                           ; Use a key to calculate the tree size only once
-                           #:key (λ (t n-occs) (cons n-occs (tree-size t)))))
+      ;; Find the largest sub-tree that appears the most times.
+      ;; 'index' = the expression tree
+      (define-values (best-count _best-k best-subtree)
+        (hash-best+key+index h (λ (n.s1 n.s2)
+                                 (or (> (car n.s1) (car n.s2))
+                                     (and (= (car n.s1) (car n.s2))
+                                          (> (cdr n.s1) (cdr n.s2)))))
+                             ; Use a key to calculate the tree size only once
+                             #:key (λ (t n-occs) (cons n-occs (tree-size t)))))
 
-    #;(debug best-count _best-k best-subtree)
+      #;(debug best-count _best-k best-subtree)
   
-    ;; Replace the most used list with a binding.
-    (cond
-      [(or (not best-count) ; empty hash
-           (= 1 best-count)) ; Can't reduce anything.
-       ;; Trigger automatc-simplify only if any change has been made.
-       (if (= idx first-idx)
-         tree
-         (automatic-simplify tree))]
-      [else
-       (define id (symbol-format "~a~a" prefix idx))
-
-       ;; Recurse.
-       ;; Do *not* trigger an automatic-simplify at this stage as the list of bindings
-       ;; is incomplete (so some could get removed).
-       (bind-loop (try-merge-let*-bindings
-                   (list (list id best-subtree))
-                   (substitute/no-simplify tree best-subtree id))
-                  (+ idx 1))])))
+      ;; Replace the most used list with a binding.
+      (cond
+        [(or (not best-count) ; empty hash
+             (= 1 best-count)) ; Can't reduce anything.
+         ;; Trigger automatc-simplify only if any change has been made.
+         (if (= iter 0)
+           orig-tree ; don't change anything (no renaming)
+           ; At least one new binding has been made, simplify everything
+           ; and try again from the start (without rebinding again).
+           ; At the next iteration, if no new binding is created we exit.
+           (batch-loop (automatic-simplify tree) #f))]
+        [else
+         (define id (default-make-id))
+         ;; Recurse.
+         ;; Do *not* trigger an automatic-simplify at this stage as the list of bindings
+         ;; is incomplete (so some could get removed).
+         (bind-loop (try-merge-let*-bindings
+                     (list (list id best-subtree))
+                     (substitute/no-simplify tree best-subtree id))
+                    (+ iter 1))]))))
 
 ;; For associative+commutative variadic operators like + and *.
 ;; We care only about non-lists, since lists are dealt with contract-let*.
 ;; op : symbol?
-(define (contract-let*/ascovar tree op #:prefix [prefix (let*-default-id-prefix)])
+(define (contract-let*/ascovar tree op)
 
-  (let bind-loop ([tree tree] [idx 0])
+  ;; First rebind all-let* for safety, in case of name collision between
+  ;; sub-let*.
+  (let bind-loop ([tree (rebind-all-let* tree)] [idx 0])
     ;; Co-occurrence table.
     (define counts (make-hash))
     ;; Count each co-occurrence of non-lists in an op list.
@@ -244,7 +309,7 @@
        (define x (car best-p))
        (define y (cdr best-p))
        ;; The id to introduce.
-       (define id (symbol-format "~a~a" prefix idx))
+       (define id (default-make-id))
        ;; Replace every co-occurrence of x and y with the new id
        ;; Do *not* trigger an automatic-simplify at this stage as the list of bindings
        ;; is incomplete (so some could get removed).
@@ -285,11 +350,10 @@
       [else tree])))
 
 ;; Another operator could be `list-no-order` (or `set`)
-(define (contract-let*/ascovars tree [ops '(+ *)]
-                                #:prefix [prefix (let*-default-id-prefix)])
+(define (contract-let*/ascovars tree [ops '(+ *)])
   (for/fold ([tree tree])
             ([op (in-list ops)])
-    (contract-let*/ascovar tree op #:prefix (format "~a~a" prefix op))))
+    (contract-let*/ascovar tree op)))
 
 ;; Expands only the top-level let* if any.
 (define (expand-let* u)
@@ -304,219 +368,3 @@
      (recurrent-substitute body subst)]
     [else u]))
 
-(module+ test
-  (require "arithmetic.rkt"
-           "trig-functions.rkt")
-
-  ;; TODO: Make sure than any id has an index that is at least as high
-  ;; as any of its dependencies +1.
-  (check-equal?
-   (remove '(e 5)
-           (sort-bindings
-            '([a (+ b c)]
-              [d (* b c)]
-              [e 5] ; causes problems with `sort` as it doesn't compare with b
-              [b (* c (exp c))])))
-   ; Make sure that b is placed before a and d.
-   '((b (* c (exp c))) (a (+ b c)) (d (* b c))))
-
-  (check-equal?
-   (variadic-replace '* '(_xx12 _xx14) 'ID
-                    '(* 0.5 _xx12 _xx14 (+ (* _xx13 _xx9) _xx12 _xx14 (* 2 _xx12 _xx14 _xx9))))
-   '(* 0.5 ID (+ (* _xx13 _xx9) _xx12 _xx14 (* 2 ID _xx9))))
-  
-  (check-equal?
-   (contract-let* '(op3 (op1 (op2 a b)
-                             (op2 a b))
-                        (op1 (op2 a b)
-                             (op2 a b)))
-                  #:prefix '_w)
-   '(let* ((_w0 (op2 a b))
-           (_w1 (op1 _w0 _w0)))
-      (op3 _w1 _w1)))
-
-  (check-equal? (_let* `([a x] [b y] [c (* z z)])
-                       '(+ a b c))
-                '(+ x y (^ z 2)))
-  (check-equal? (_let* `([a x] [b y] [c ,(* 'z 'z)])
-                       (* 'c (+ 'a 'b 'c)))
-                '(let* ((c (^ z 2))) (* c (+ c x y))))
-  (check-equal? (_let* '() (+ 'a 2)) (+ 'a 2))
-  (check-equal? (_let* '([a 5]) (+ 'a 2)) 7)
-  (check-equal? (_let* '([a 5] [b a] [c (+ b a)]) (+ 'a 'b 'c))
-                20)
-  (check-equal? (_let* '([a b]) (+ 'a 2)) (+ 'b 2))
-  (check-equal? (_let* '([a (+ b 5)]) (+ 'a 2))
-                (+ 'b 7))
-
-  ; nested let
-  (check-equal? (_let* `([a 5])
-                       (+ 3
-                          (_let* `([b 6])
-                                 (* 'a 'b))
-                          (_let* `([c 10])
-                                 (+ 'a 'c))))
-                48)
-
-
-  
-  (check-equal? (contract-let* (+ (log (+ 'x 3))
-                                  (exp (+ 'x 3))
-                                  (^ (+ 'x 3) 'a))
-                               #:prefix '_y)
-                `(let* ([_y0 ,(+ 'x 3)])
-                   ,(+ (log '_y0) (exp '_y0) (^ '_y0 'a))))
-  (check-equal? (expand-let*
-                 (contract-let* (+ (log (+ 'x 3))
-                                   (exp (+ 'x 3))
-                                   (^ (+ 'x 3) 'a))
-                                #:prefix '_y))
-                '(+ (exp (+ 3 x)) (log (+ 3 x)) (^ (+ 3 x) a)))
-  (check-equal?
-   (contract-let* '(*
-                    2
-                    (^ a 2)
-                    (cos (exp (cos (* (^ a 2) (^ (+ b x) 2)))))
-                    (exp (cos (* (^ a 2) (^ (+ b x) 2))))
-                    (^ (sin (exp (cos (* (^ a 2) (^ (+ b x) 2))))) -1)
-                    (sin (log (sin (exp (cos (* (^ a 2) (^ (+ b x) 2)))))))
-                    (sin (* (^ a 2) (^ (+ b x) 2)))
-                    (+ b x))
-                  #:prefix '_y)
-   '(let* ((_y0 (^ a 2))
-           (_y1 (+ b x))
-           (_y2 (* _y0 (^ _y1 2)))
-           (_y3 (exp (cos _y2)))
-           (_y4 (sin _y3)))
-      (* 2 _y0 _y1 _y3 (^ _y4 -1) (cos _y3) (sin _y2) (sin (log _y4))))
-   #;`(let* ((_y0 ,(* (^ 'a 2) (^ (+ 'b 'x) 2)))
-           (_y1 ,(exp (cos '_y0)))
-           (_y2 ,(sin '_y1)))
-      (*
-       2
-       _y1
-       (^ _y2 -1)
-       (^ a 2)
-       (cos _y1)
-       (sin _y0)
-       (sin (log _y2))
-       (+ b x))))
-  (check-equal?
-   (expand-let*
-    `(let* ((_y0 ,(* (^ 'a 2) (^ (+ 'b 'x) 2)))
-            (_y1 ,(exp (cos '_y0)))
-            (_y2 ,(sin '_y1)))
-       (*
-        2
-        _y1
-        (^ _y2 -1)
-        (^ a 2)
-        (cos _y1)
-        (sin _y0)
-        (sin (log _y2))
-        (+ b x))))
-   '(*
-     2
-     (^ a 2)
-     (cos (exp (cos (* (^ a 2) (^ (+ b x) 2)))))
-     (exp (cos (* (^ a 2) (^ (+ b x) 2))))
-     (^ (sin (exp (cos (* (^ a 2) (^ (+ b x) 2))))) -1)
-     (sin (log (sin (exp (cos (* (^ a 2) (^ (+ b x) 2)))))))
-     (sin (* (^ a 2) (^ (+ b x) 2)))
-     (+ b x)))
-
-  ;; When extracting from the bindings,
-  ;; the new binding must be above, not after.
-  (check-equal?
-   (contract-let*
-    #:prefix '_y
-    (_let* `([c ,(* (+ 'a 'b) (exp (+ 'a 'b)))])
-           (* 'c (log 'c))))
-   '(let* ([_y0 (+ a b)]
-           [c (* _y0 (exp _y0))])
-      (* c (log c))))
-
-  ;; The new binding must be in the middle of the list(!)
-  (check-equal?
-   (contract-let*
-    #:prefix '_y
-    (_let* `([a ,(* 'b (exp 'b))]
-             [c ,(* (^ 'a (+ 'a 'b)) (exp (^ 'a (+ 'a 'b))))])
-           (* 'c (log 'c))))
-   `(let* ([a ,(* 'b (exp 'b))]
-           [_y0 (^ a (+ a b))]
-           [c (* _y0 (exp _y0))])
-      (* c (log c))))
-
-  (check-equal?
-   (expand-let*
-    (contract-let*/ascovars
-     '(list (* a b c d e t) (* a b c d e x) (* a b c d e y) (* a b c d e z)
-            (+ a b c d e t) (+ a b c d e x) (+ a b c d e y) (+ a b c d e z))
-     #:prefix '_w))
-   '(list
-     (* a b c d e t)
-     (* a b c d e x)
-     (* a b c d e y)
-     (* a b c d e z)
-     (+ a b c d e t)
-     (+ a b c d e x)
-     (+ a b c d e y)
-     (+ a b c d e z)))
-
-  ;; Nothing to simplify.
-  (check-equal?
-   (contract-let*/ascovars '(* (* a b) (* a b))
-                           #:prefix '_w)
-   '(* (^ a 2) (^ b 2)))
-
-  (check-equal?
-   (contract-let*/ascovars
-    '(let* ([a (* 2 aa)])
-       (op1 (* a b c d e t) (* a b c d e x)))
-    #:prefix '_w)
-   '(let* ((_w*3 (* 2 aa b c d e)))
-      (op1 (* _w*3 t) (* _w*3 x))))
-
-
-  (check-not-exn
-   (λ ()
-     (contract-let*
-      #:prefix '_cc
-      '(list
-        (let* ((_w_out_1_0
-                (* 0.5 (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)) (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))))))
-          (*
-           0.5
-           (list
-            (+
-             (* 2.0 _w_1_0_0 _w_2_0_0 'a 'b)
-             (* 2.0 _w_1_1_0 _w_2_0_1 'c 'd)))
-           (+
-            (* 2 b (dirac (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e))) (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))
-            (* b (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e))))))))
-        (let* ((_w_out_1_0
-                (* 0.5 (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)) (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))))))
-          (*
-           0.5
-           (list
-            (+
-             (* 2.0 _w_1_0_0 _w_2_0_0 'a 'b)
-             (* 2.0 _w_1_1_0 _w_2_0_1 'c 'd)))
-           (+
-            (* 2 c (dirac (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e))) (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))
-            (* c (+ 1 (sgn (+ (* _w_0_0_0 a) (* _w_0_0_1 b) (* _w_0_0_2 c) (* _w_0_0_3 d) (* _w_0_0_4 e)))))))))
-      )))
-
-  ;; The problem here is that contract-let* will find ([c (+ a b)]) as
-  ;; something to compress, which is not right.
-  ;; we should look only inside expressions
-  (check-not-exn
-   (λ () (contract-let*
-          #:prefix '_y
-          (+
-           (_let* `([c ,(+ 'a 'b)])
-                  (* 'c (log 'c)))
-           (_let* `([c ,(+ 'a 'b)])
-                  (* 'c 'd (log 'c)))))))
-  )

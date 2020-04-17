@@ -25,6 +25,9 @@
 ;;;  and be computationally as efficient as calculating
 ;;;  the forward pass.
 
+;;; TODO: Differentiate on several variables at the same time,
+;;; which may allow to share computation and generated code.
+
 (define (derivative u x)
   (cond
     [(equal? u x) 1]
@@ -35,23 +38,12 @@
        [`(+ . ,vs)
         (apply + (map (λ (v) (derivative v x))
                       vs))]
-       #;[`(* . ,vs)
-          ; Based on the trick: df(x)/dx = f(x) dlog(f(x))/dx
-          ; This takes only linear time but gives inverse values which is an issue
-          ; with zeros.
-          ; See the drracket submodule below for an example where it takes way fewer
-          ; steps than the default method.
-          ; It's also a little more complicated to simplify.
-          (* u (apply + (map (λ (v) (/ (derivative v x)
-                                       v))
-                             vs)))]
        [`(* ,v . ,ws)
         ; This can take quadratic time with the number of arguments but doesn't
         ; produce inverses like the variant above.
         (define *ws `(* . ,ws))
         (+ (* v (derivative *ws x))
            (* *ws (derivative v x)))]
-       ;;; let*
        [`(let* (,orig-bindings ...) ,body)
         (define new-body
           ;; Recursively apply the chain rule for each id, unless d.id / d.x = 0.
@@ -62,6 +54,9 @@
               [else
                (define-values (bid btree) (apply values (first bindings)))
                (when (equal? bid x)
+                 ;; TODO: Instead, we could just consider this shadowing and
+                 ;; stop the diff for the old-id, and continue with the 'new' id
+                 ;; if old-id appears in the binding like [id (+ id 3)].
                  (error "let*: Cannot differentiate for a bound id:" bid))
                (define dbtree (derivative btree x))
                (if (zero-number? dbtree)
