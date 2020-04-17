@@ -19,6 +19,9 @@
 (module+ test
   (require rackunit))
 
+;;; TODO: Substitutions should stop when encountering a bound id with the same name (shadowing).
+;;; see bottom for tentative algorithm.
+
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -194,3 +197,47 @@
   (check-equal? ((tree->procedure '(* x (op1 x y)) 'x 'y) 'a 'b)
                 '(* a (op1 a b))))
 
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Tentative substitute with shadowing in let*
+;;; Does not work if a binding appears twice in the same let*, e.g.,
+;; (let* ([a 5] [b (+ a 2)] [a 6]) (+ a b))
+
+#;
+(begin
+  (require "letstar.rkt") ; cycle
+  (define (subst u bindings)
+    (define h (make-hash))
+    (for ([b (in-list bindings)])
+      (hash-set! h (car b) (cadr b)))
+    (let loop ([u u])
+      (cond
+        [(hash-has-key? h u) (hash-ref h u)]
+        [(list? u)
+         (match u
+           [`(let* ,bindings ,body)
+            (let bind-loop ([bindings bindings]
+                            [new-bindings '()]
+                            [restore-bindings '()])
+              (cond
+                [(null? bindings)
+                 (define new-body (loop body))
+                 ; Restore the shadowed bindings
+                 (for ([(id btree) (in-list restore-bindings)])
+                   (hash-set! h id btree))
+                 ; Reconstruct the let* and sort the bindings 
+                 (_let* new-bindings new-body)]
+                [else
+                 (define-values (id btree) (apply values (car bindings)))
+                 (define shadowed? (hash-has-key? h id))
+                 (when shadowed?
+                   (hash-remove! h id))
+                 (bind-loop (cdr bindings)
+                            (cons (list id (loop btree))
+                                  new-bindings)
+                            (if shadowed?
+                              (cons (cons id btree) restore-bindings)
+                              restore-bindings))]))]
+           [else (map loop u)])]
+        [else u]))))
