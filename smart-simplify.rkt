@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require "misc.rkt"
+         "algorithmic.rkt"
          "automatic-simplify.rkt"
          "factor.rkt"
          "distribute.rkt")
@@ -10,16 +11,20 @@
 ;; Tries hard to simplify u with various strategies.
 ;; Still work in progress.
 ;; TODO: Check for trigonometric functions and apply trig-simplify. Same for contract/expand of exp?
+;; TODO: timeout to return the best result if take too much time!
 (define (smart-simplify u)
   (for/fold ([best u]
              [best-size (tree-size u)]
              #:result best)
             ([ltrans (in-list
                       ;; Other transformations may be added here later
-                      (list (list factor-product)
+                      ;; TODO: Try all these in various orders, but try first what works well in general (learning?)
+                      ;; TODO: Try again the same sequence afterwards.
+                      (list (list contract-let* contract-let*/ascovars factor-product distribute-product factor-product)
+                            (list factor-product contract-let* contract-let*/ascovars)
+                            (list distribute-product factor-product contract-let* contract-let*/ascovars)
                             (list automatic-simplify distribute-product factor-product)
                             (list automatic-simplify factor-product)
-                            (list distribute-product factor-product)
                             ))])
     ;; Follows a list of transformations starting from u,
     ;; and keeps the best one along the path.
@@ -38,7 +43,7 @@
 (module+ drracket
   (require "derivative.rkt"
            "arithmetic.rkt"
-           "misc.rkt")
+           "special-functions.rkt")
   (define df (derivative '(* (+ 1 x) (+ 2 x) (gamma (+ 3 x)) (exp (+ 4 x))
                              (sqr (+ 5 x)) (^ (log (+ 6 x)) -1))
                          'x))
