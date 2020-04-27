@@ -6,22 +6,26 @@
          racket/list
          racket/match
          racket/math
+         syntax/location
          (for-syntax racket/base))
 
 (provide pi
          debug
          debug-expr
+         time/line
+         ids->assoc
          symbol-format
          try-apply-number
          define-simple-function
          register-function
          symbol->function
          no-fun
+         simplify-top
          register-derivatives
          register-derivative
          function-derivatives
          function-derivative
-         hash-best+key+index
+         hash-best+key+value
          rev-append
          tree-size
          ids-occurrences
@@ -93,6 +97,9 @@
 (define (symbol-format fmt . args)
   (string->symbol (apply format fmt args)))
 
+(define-syntax-rule (ids->assoc id ...)
+  (list (cons 'id id) ...))
+
 (define-syntax-rule (debug expr ...)
   (begin
     (printf "~a = ~a\n" 'expr expr)
@@ -102,6 +109,17 @@
   (let ([res expr])
     (printf "~a = ~a\n" 'expr res)
     res))
+
+(define-syntax (time/line stx)
+  (syntax-case stx ()
+    [(_ body ...)
+     #`(let ()
+         (define-values (res cpu real gc)
+           (time-apply (λ () body ...) '()))
+         ; Print afterwards in case body includes other time/lines.
+         (printf "Line: ~a\tFile: ~a\n" (quote-line-number #,stx) (quote-source-file #,stx))
+         (printf "cpu time: ~a real time: ~a gc time: ~a\n" cpu real gc)
+         (apply values res))]))
 
 ;=============;
 ;=== Lists ===;
@@ -223,6 +241,7 @@
                 (λ () (remove-all+ '(a b c) '(z a a b x a y c)))
                 '((z a x a y) (a b c) ())))
 
+;; TODO: rename key to value to avoid confusion with hash keys.
 ;; extract-key: hash-key hash-val -> T ; This differs from `best+key+index` for lists
 ;; better? : T T -> boolean (or any/c)
 ;; Notice: If the hash is empty, all values are #f. It is the duty of the user
@@ -230,31 +249,31 @@
 ;; The name conflict with `key` is annoying, but it's for consistency
 ;; with `sort` and best-* variants.
 ;; So we call the hash key the 'index' instead.
-(define (hash-best+key+index h better? #:key [extract-key (λ (idx val) val)])
-  (for/fold ([best-val #f]
+(define (hash-best+key+value h better? #:value [extract-value (λ (key val) val)])
+  (for/fold ([best-elt #f]
              [best-key #f]
-             [best-idx #f])
-            ([(x-idx x-val) (in-hash h)]
+             [best-val #f])
+            ([(x-key x-elt) (in-hash h)]
              [i (in-naturals)])
-    (define x-key (extract-key x-idx x-val))
+    (define x-val (extract-value x-key x-elt))
     (if (or (= i 0)
-            (better? x-key best-key))
-      (values x-val x-key x-idx)
-      (values best-val best-key best-idx))))
+            (better? x-val best-val))
+      (values x-elt x-key x-val)
+      (values best-elt best-key best-val))))
 
 
 (module+ test
   
   (let ([h (hash "a" 2 "aa" 3 "abaaa" 3 "d" 5)])
     (check-values equal?
-                  (λ () (hash-best+key+index h <))
-                  '(2 2 "a"))
+                  (λ () (hash-best+key+value h <))
+                  '(2 "a" 2))
     (check-values equal?
-                  (λ () (hash-best+key+index h >))
-                  '(5 5 "d"))
+                  (λ () (hash-best+key+value h >))
+                  '(5 "d" 5))
     (check-values equal?
-                  (λ () (hash-best+key+index h > #:key (λ (idx val) (string-length idx))))
-                  '(3 5 "abaaa"))))
+                  (λ () (hash-best+key+value h > #:value (λ (idx val) (string-length idx))))
+                  '(3 "abaaa" 5))))
 
 (define (operator-kind v)
   (and (pair? v)
@@ -324,6 +343,19 @@
                 '(aaa a b c))
   (check-equal? ((no-fun 'aaa))
                 '(aaa)))
+
+;; Applies to top level operator to the rest of the tree and returns the result.
+(define (simplify-top tree)
+  (define op (operator-kind tree))
+  (define fun (and op (symbol->function op)))
+  (if fun
+    (apply fun (rest tree))
+    tree))
+
+(module+ test
+  #; ; doesn't work without arithmetic, but circular deps...
+  (check-equal? (simplify-top `(+ 3 4 (* 'a (+ 3 4))))
+                '(+ 7 (* 'a (+ 3 4)))))
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
