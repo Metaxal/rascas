@@ -76,10 +76,10 @@
             ;; TODO: Don't recompute the args, use a let* to compress.
             ;; unless only one arg
             (apply + (map (λ (df arg)
-                          (* (apply df args)
-                             (derivative arg x)))
-                        dfs
-                        args)))
+                            (* (apply df args)
+                               (derivative arg x)))
+                          dfs
+                          args)))
           `(derivative ,u ,x))]
        ; Unknown case (reachable?).
        [else `(derivative ,u ,x)])]))
@@ -292,8 +292,7 @@
   ;; First, create a computation graph
   ;; WARNING: Does not work with let*
   (define last-id ; might be a number!
-    (time/line
-     (let loop ([tree tree])
+    (let loop ([tree tree])
       ; Start with the bottom.
       (define res
         (match tree
@@ -318,13 +317,12 @@
          (define id (default-make-id))
          (hash-set! bindings id res)
          (hash-set! rev-bindings res id)
-         id]))))
+         id])))
   (define jach (make-hasheq))
   ;; TODO: Use struct nodes instead of hashes?
   (for ([x (in-list xs)])
     (hash-set! jach x 0))
-  (time/line
-   (let loop ([id last-id] [diff 1])
+  (let loop ([id last-id] [diff 1])
     (cond [(hash-has-key? jach id)
            (hash-update! jach id (λ (old) (+ diff old)))]
           [(hash-ref bindings id #f)
@@ -340,7 +338,7 @@
                   (define diffid (default-make-id))
                   (hash-set! bindings diffid (* diff (derivative expr subid)))
                   (loop subid diffid))]))]
-          [else (void)]))) ; number or free id 
+          [else (void)])) ; number or free id 
 
   (define body (apply _list (for/list ([x (in-list xs)])
                               (hash-ref jach x))))
