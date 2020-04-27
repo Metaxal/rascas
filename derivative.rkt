@@ -3,7 +3,8 @@
 ;;;; This file has been changed from its original dharmatech/mpl version.
 
 (provide derivative
-         derivative/proc)
+         derivative/proc
+         jacobian)
 
 (require "misc.rkt"
          "algorithmic.rkt"
@@ -18,20 +19,11 @@
 ;;; which are defined also for non-continuous functions
 ;;; such as |x| or sgn(x), and have better numerical stability.
 
-;;; TODO: 'AutoDiff', backprop:
-;;;  take as input a substitution dictionary,
-;;;  and substitute while differentiating with the
-;;;  chain rule to reduce all expressions to numbers
-;;;  and be computationally as efficient as calculating
-;;;  the forward pass.
-
-;;; TODO: Differentiate on several variables at the same time,
-;;; which may allow to share computation and generated code.
-
 (define (derivative u x)
   (cond
     [(equal? u x) 1]
-    [(free? u x) 0] ; check early to simplify early, but can be costly in total!
+    ; Check early to simplify early, but can be costly in total if the tree is a comb.
+    [(free? u x) 0] 
     [else
      (match u
        ;; Due to their variadic nature, + and * are treated specially.
@@ -81,6 +73,8 @@
               (error "The number of derivatives does not match the number of arguments."
                      'function: op 'n-derivs: (length dfs) 'n-args: (length args)))
             #;(displayln args)
+            ;; TODO: Don't recompute the args, use a let* to compress.
+            ;; unless only one arg
             (apply + (map (λ (df arg)
                           (* (apply df args)
                              (derivative arg x)))
@@ -106,7 +100,8 @@
   (define sym (gensym))
   (tree->procedure (derivative (f sym) sym) sym #:inexact? inexact?))
 
-;; Useful to check equality
+;; Symmetric derivative.
+;; Useful to check equality.
 (define (numeric-derivative f [ε 0.000001])
   (λ (x)
     (/ (- (f (+ x ε)) (f (- x ε)))
@@ -223,33 +218,34 @@
           '_w_0_0_0)))
 
   (check-equal?
-   (contract-let*
-    #:prefix '_g
-    (derivative
-     '(let* ((a (exp x))
-             (b (+ 1.0 a))
-             (c (+ -1.0 a))
-             (d (^ b -2)))
-        (* a (+ (^ b -1) (* -1 d c) (* -1 d a) (* (+ (* -1 d) (* 2 (^ b -3) c)) a))))
-     'x))
-   '(let* ((_g4 (exp x))
-           (b (+ 1.0 _g4))
-           (c (+ -1.0 _g4))
-           (_g0 (^ b -3))
-           (_g3 (^ b -2))
-           (_g1 (* 2 _g0 c))
-           (_g2 (* -1 _g3)))
-      (*
-       _g4
-       (+
-        (* (+ _g1 _g2) _g4)
-        (* -1 _g3 _g4)
-        (* (+ _g1 (* -2 _g3)) _g4)
-        (* _g4 (+ _g2 (* 2 _g0 _g4)))
-        (^ b -1)
-        (* -1 _g3 c)
-        (* -2 _g0 _g4 (+ (* -2 _g4) (* -1 c)))
-        (* _g4 (+ (* -1 _g3) (* -6 _g4 (^ b -4) c)))))))
+   (expand-let*
+    (contract-let*
+     (derivative
+      '(let* ((a (exp x))
+              (b (+ 1.0 a))
+              (c (+ -1.0 a))
+              (d (^ b -2)))
+         (* a (+ (^ b -1) (* -1 d c) (* -1 d a) (* (+ (* -1 d) (* 2 (^ b -3) c)) a))))
+      'x)))
+   (expand-let*
+    '(let* ((_g4 (exp x))
+            (b (+ 1.0 _g4))
+            (c (+ -1.0 _g4))
+            (_g0 (^ b -3))
+            (_g3 (^ b -2))
+            (_g1 (* 2 _g0 c))
+            (_g2 (* -1 _g3)))
+       (*
+        _g4
+        (+
+         (* (+ _g1 _g2) _g4)
+         (* -1 _g3 _g4)
+         (* (+ _g1 (* -2 _g3)) _g4)
+         (* _g4 (+ _g2 (* 2 _g0 _g4)))
+         (^ b -1)
+         (* -1 _g3 c)
+         (* -2 _g0 _g4 (+ (* -2 _g4) (* -1 c)))
+         (* _g4 (+ (* -1 _g3) (* -6 _g4 (^ b -4) c))))))))
 
   (check-derivative
    (λ (x)
@@ -283,31 +279,121 @@
                 (->inexact (/ (sqrt 2))))
   )
 
-;; This is just a curiosity, although it works quite well.
-;; Minimalistic derivative based on df(x)/dx = f(x)dlog(f(x))/dx,
-; and heavily relies a lot on automatic reduction, in particular of the log.
-#;
-(module+ drracket
-  
-  (define (deriv* u x)
-    #;(displayln u)
-    #;(read-line)
-    (cond
-      [(not (contains? u x)) 0]
-      [(equal? u x)
-       1]
-      [else
-       (match u
-         [`(+ . ,vs) (apply + (map (λ (v) (deriv* v x)) vs))]
-         [`(log ,v) (/ (deriv* v x)
-                       v)]
-         [else (* u (deriv* (log u) x))])]))
+;; --------------------------------------------------------------------------------
 
-  ;; Can lead to much shorter formula (but not always)
-  (let ([f (apply * (build-list 1000 (λ (x) (+ 'x (random 1000)))))])
-    (list (tree-size (deriv* f 'x))
-          (newline)
-          (tree-size (derivative f 'x))))
-  )
+;; Reverse mode.
+;; Go through the bindings in *reverse* order,
+;; collect the derivative along each branch,
+;; and when hitting an input symbol x, collect in a hash.
+;; Finally, build the let* with a list 
+(define (jacobian tree xs)
+  (define rev-bindings (make-hash)) ; expr -> id
+  (define bindings (make-hasheq)) ; id -> expr
+  ;; First, create a computation graph
+  ;; WARNING: Does not work with let*
+  (define last-id ; might be a number!
+    (time/line
+     (let loop ([tree tree])
+      ; Start with the bottom.
+      (define res
+        (match tree
+          [`(let* ,(list subbindings ...) ,body)
+           (for ([b (in-list subbindings)])
+             (define-values (id expr) (apply values b))
+             (when (hash-has-key? bindings id)
+               (error "ID already exists in hash:" id expr))
+             (define new-id (loop expr))
+             (hash-set! bindings id new-id)
+             (hash-set! rev-bindings new-id id)) ; not useful?
+           ;; TODO: What if the binding already exists?
+           (loop body)]
+          [`(,op . ,args)
+           (cons op (map loop (cdr tree)))]
+          [else tree]))
+      (cond
+        [(number? res) res]
+        [(symbol? res) res]
+        [(hash-ref rev-bindings res #f)] ; reuse binding if possible
+        [else
+         (define id (default-make-id))
+         (hash-set! bindings id res)
+         (hash-set! rev-bindings res id)
+         id]))))
+  (define jach (make-hasheq))
+  ;; TODO: Use struct nodes instead of hashes?
+  (for ([x (in-list xs)])
+    (hash-set! jach x 0))
+  (time/line
+   (let loop ([id last-id] [diff 1])
+    (cond [(hash-has-key? jach id)
+           (hash-update! jach id (λ (old) (+ diff old)))]
+          [(hash-ref bindings id #f)
+           =>
+           (λ (expr)
+             ; expr cannot be a let* as they all have been deconstructed.
+             (cond
+               [(number? expr) (void)]
+               [(symbol? expr) (loop expr diff)]
+               [(list? expr)
+                ; for each subid, calculate derivative
+                (for ([subid (in-list (rest expr))])
+                  (define diffid (default-make-id))
+                  (hash-set! bindings diffid (* diff (derivative expr subid)))
+                  (loop subid diffid))]))]
+          [else (void)]))) ; number or free id 
+
+  (define body (apply _list (for/list ([x (in-list xs)])
+                              (hash-ref jach x))))
+  #;(debug bindings body)
+  ;; Now we can reduce the let*
+  ;; The simplify-top is in the likely case where some ids are used 0 times,
+  ;; but increase the count of ids in their bound expr. 
+  (simplify-top (_let* (hash-map bindings list) body)))
+
+(module+ test
+  (check-equal?
+   (jacobian (+ (* 'c 'a) (* 'd (^ 'b 2)))
+             '(a b))
+   '(list c
+          (* 2 b d)))
+
+  (check-equal?
+   (rebind-all-let*
+    (jacobian (exp (+ (* 'c 'a) (* 'd (^ 'b 2))))
+              '(a b))
+    '_s)
+   '(let* ((_s0 (exp (+ (* a c) (* (^ b 2) d)))))
+      (list (* _s0 c)
+            (* 2 _s0 b d))))
+  
+  (check-equal?
+   (rebind-all-let*
+    (jacobian (sin (exp (+ (* 'c 'a) (* 'd (^ 'b 2)))))
+              '(a b))
+    '_s)
+   '(let* ((_s0 (+ (* a c) (* (^ b 2) d)))
+           (_s1 (* (cos (exp _s0)) (exp _s0))))
+      (list (* _s1 c) (* 2 _s1 b d))))
+
+  ;; let*
+  (check-equal?
+   (rebind-all-let*
+    (jacobian
+     `(let* ([a (+ 3 x)]
+             [b (+ 2 x a)])
+        (+ (* a b)
+           (* (log a) (log b))))
+     '(a b))
+    '_s)
+   '(let* ((_s0 (+ 3 x))
+           (_s1 (+ 2 _s0 x)))
+      (list (+ _s1 (* (^ _s0 -1) (log _s1)))
+            (+ _s0 (* (^ _s1 -1) (log _s0)))))))
+
+;; Calculates and returns the derivative of each xs and applies the substitutions subst
+;; at the same time.
+;; If the substitution is complete and inexact? is not #f, numeric values are returned.
+;; The returned tree should produce a subst list
+#;(define (diff+subst f xs subst #:inexact? [inexact? #f]))
 
 
