@@ -5,6 +5,7 @@
          "order-relation.rkt"
          racket/list
          racket/match
+         racket/string
          )
 
 (provide _let*
@@ -16,7 +17,8 @@
          default-make-id
          rebind-let*
          rebind-all-let*
-         variadic-replace)
+         variadic-replace
+         unbound-ids)
 
 ;;; There are many differences with Scheme/Racket's let*.
 ;;; - ids have a more global scope (for now).
@@ -35,7 +37,8 @@
     (set! idx (+ 1 idx))
     (string->symbol (string-append prefix (number->string idx)))))
 
-(define default-make-id (make-make-id "__s_"))
+;; TODO: Rename to make-id?
+(define default-make-id (make-make-id "__s"))
 
 
 ;; The purpose of this 'function' is to remove the binding pairs when the
@@ -45,69 +48,76 @@
 ;; Naming it `let*` would badly interact with Racket, because `_let*` doesn't
 ;; behave exactly like `let*`. The list of bindings are not ids, but expressions
 ;; so one must write like (_let* `([a ,(+ 2 'b)]) ...).
-;; NOTICE: _let* triggers `automatic-simplify` (through concurrent-substitute),
+;; NOTICE: _let* reorders the bindings in topological order.
+;; NOTICE: _let* triggers `automatic-simplify` (through substitute/dict),
 ;;   which recurse through the body.
-;;   ALSO automatic-simplify triggers _let*.
+;;   ALSO automatic-simplify triggers sub _let* if any.
 (define _let*
   (match-lambda*
     [`( ,(list bindings ...) ,body)
-     ;; Recursively reduce the bindings to atomic expressions if possible,
-     ;; and substitute back in if reduced.
-     (define-values (subst new-bindings)
-       (for/fold ([subst '()] ; substitution list (not an assoc)
-                  [new-bindings '()]) ; new list of binding to keep in let*
-                 ([bind (in-list bindings)])
-         (define new-val (concurrent-substitute (cadr bind) subst))
-         (define new-bind (list (car bind) new-val))
-         (if (pair? new-val)
-           ; Still a pair, not reduced enough, we keep the old binding.
-           (values subst (cons new-bind new-bindings))
-           ; Not a pair, that's reduced enough, remove the binding and
-           ; add a substitution.
-           (values (cons new-bind subst) new-bindings))))
-     (define new-body
-       (concurrent-substitute body subst))
+     (let ([bindings (sort-bindings bindings)])
+       ;; Recursively reduce the bindings to atomic expressions if possible,
+       ;; and substitute back in if reduced.
+       (define subst (make-hasheq))
+       (define new-bindings
+         (for/fold ([new-bindings '()] ; new list of binding to keep in let*
+                    ; We must keep the correct order of the bindings.
+                    #:result (reverse new-bindings))
+                   ([bind (in-list bindings)])
+           (define id (car bind))
+           (define expr (second bind))
+           (define new-val (substitute/dict expr subst))
+           (if (pair? new-val)
+             ; Still a pair, not reduced enough, we keep the old binding.
+             (cons (list id new-val) new-bindings)
+             ; Not a pair, that's reduced enough, remove the binding and
+             ; add a substitution.
+             (begin
+               (hash-set! subst id new-val)
+               new-bindings))))
+       (define new-body (substitute/dict body subst))
      
-     #;(debug bindings body subst new-bindings)
+       #;(debug bindings body subst new-bindings)
 
-     ;; Now check if a binding is used only once, in which case it should be
-     ;; substituted back in, and remove bindings that are not used anymore.
-     (define counts (ids-occurrences (map car new-bindings)
-                                     (list new-bindings new-body)))
-     (define-values (subst2 new-bindings2)
-       (for/fold ([subst '()]
-                  [new-bindings '()])
-                 ([bind (in-list new-bindings)])
-         (define id (car bind))
-         (define c (hash-ref counts id))
-         (cond [(= 1 c) ; id is never used (only defined), remove it
-                (values subst new-bindings)]
-               [(= 2 c) ; id is used only once, this is wasteful
-                (values (cons bind subst) new-bindings)]
-               [else (values subst (cons bind new-bindings))])))
-     (define new-body2 (recurrent-substitute new-body subst2))
-     ;; Also apply the substitution to the new bindings.
-     ;; (bindings is in reverse order, new-bindings2 is in correct order,
-     ;; and so is new-bindings3).
-     (define new-bindings3
-       (for/list ([bind (in-list new-bindings2)])
-         (list (car bind)
-               (recurrent-substitute (cadr bind) subst2))))
+       ;; Now check if a binding is used only once, in which case it should be
+       ;; substituted back in, and remove bindings that are not used anymore.
+       ;; Also through away bindings that are not used at all.
+       ;; Important: the bindings must be correcly ordered already.
+       (define counts (ids-occurrences (map car new-bindings)
+                                       (list new-bindings new-body)))
+       (define subst2 (make-hasheq))
+       (define new-bindings2
+         (for/fold ([new-bindings '()]
+                    #:result (reverse new-bindings))
+                   ([bind (in-list new-bindings)])
+           (define id (car bind))
+           (define expr (cadr bind))
+           (define c (hash-ref counts id))
+           (cond [(= 1 c) ; id is never used (only defined), remove it
+                  ;; TODO: If id references other ids, we need to decrease their counts
+                  new-bindings]
+                 [(= 2 c) ; id is used only once, this is wasteful
+                  ; Substituting here avoids a recurrent substitute for body.
+                  (hash-set! subst2 id (substitute/dict expr subst2))
+                  new-bindings]
+                 [else
+                  ; Also apply the substitutions to existing bindings.
+                  (cons (list id (substitute/dict expr subst2))
+                        new-bindings)])))
+       (define new-body2 (substitute/dict new-body subst2))
 
-     #;(debug subst2 new-bindings2 new-bindings3)
+       #;(debug subst2 new-bindings2)
 
-     ;; Reconstruct the let* form, or remove it if not needed anymore.
-     ;; Make sure the bindings are in the best order.
-     (let ([bindings (sort-bindings new-bindings3)]
-           [body new-body2])
-       (if (null? bindings)
-       body
-       `(let* ,bindings ,body)))]
+       ;; Reconstruct the let* form, or remove it if not needed anymore.
+       ;; Make sure the bindings are in the best order.
+       (if (null? new-bindings2)
+         new-body2
+         `(let* ,new-bindings2 ,new-body2)))]
     
     [other (error "_let* bad form" other)]))
 (register-function 'let* _let*)
 
-;; Sort bindings in dependency order.
+;; Sort bindings in dependency order (topological order).
 ;; Not only useful for computational reasons, but derivative may fail
 ;; if not sorted in chain-rule order.
 ;; TODO: Check that the same binding doesn't appear twice?
@@ -159,34 +169,18 @@
      `(let* ,bindings
         ,body)]))
 
-;; WARNING: The order of the bindings in the let* is syntactically not important because
-;; `concurrent-substitute` substitutes also into substitutions, but is computationally
-;; important because reduction can be made either before or after substitution.
-;; Compare:
-#;(let* ([b 3]
-         [c 2]
-         [a (* (+ b c 1) (+  b c 2) (+ b c 3))])
-    (+ a b c))
-#;(let* ([a (* (+ b c 1) (+  b c 2) (+ b c 3))]
-         [b 3]
-         [c 2])
-    (+ a b c))
-;; In the first one, b and c are substituted in a which thus reduces to a value
-;; which makes the evaluation of the body simple.
-;; In the second one, b and c are substituted in a only after a has been substituted
-;; in the body, making the evaluation more demanding.
-
 ;; Replaces the ids with fresh ids in bindings and body to produce a new let* form.
+;; TODO: Check that the newly introduced ids don't already appear!
 (define (rebind-let* alet* #:make-id [make-id default-make-id])
   (match alet*
     [`(let* ,(list bindings ...) ,body)
      (define n-bindings (length bindings))
-     (define new-ids (build-list n-bindings (λ (i) (make-id))))
-     (define old-ids (map car bindings))
-     (define subst (map list old-ids new-ids))
+     (define subst (make-hasheq))
+     (for ([b (in-list bindings)])
+       (hash-set! subst (first b) (make-id)))
      ;; No need to apply let*?
-     `(let* ,(concurrent-substitute bindings subst #:simplify? #f)
-        ,(concurrent-substitute body subst #:simplify? #f))]))
+     `(let* ,(substitute/dict bindings subst #:simplify? #f)
+        ,(substitute/dict body subst #:simplify? #f))]))
 
 ;; Rebinds all let*s in the tree to ensure all bindings have different names,
 ;; and returns the new tree.
@@ -212,15 +206,34 @@
        (map loop tree)]
       [else tree])))
 
-;; Recursively replaces the most used sub-expression (syntactic check) in tree
-;; with a let* binding and returns the result.
-;; Returns the original expression if no sub-expression occurs at least twice.
-;; This is probably not the most efficient implementation.
-(define (contract-let* tree)
-  (let batch-loop ([orig-tree tree] [rebind? #t])
-    ;; First rebind all sublet* (apart from top-level) in case
-    ;; there are name collisions between two branches.
-    (let bind-loop ([tree (if rebind? (rebind-all-let* orig-tree) orig-tree)]
+;; Returns a tree with only a single top-level let* and no sublet*.
+;; All bindings are renamed for safety.
+(define (lift-all-let* tree)
+  (define bindings '())
+  (define new-body
+    ; Returns a new body free of let*.
+    (let loop ([tree (rebind-all-let* tree)])
+      (match tree
+        [`(let* ,(list bds ...) ,body)
+         (set! bindings
+               (append
+                ; Also iterate through the bindings' values and remove the let*s.
+                (for/list ([b (in-list bds)])
+                  (list (car b) (loop (cadr b))))
+                bindings))
+         (loop body)]
+        [(? list?)
+         (map loop tree)]
+        [else tree])))
+  (_let* bindings new-body))
+
+
+
+#;(define (contract-let* tree)
+  (let batch-loop ([orig-tree tree] [lift-all? #t])
+    ;; First lift all sublet* to the top level (and rename all ids).
+    ;; This avoids extracting ids out of their context.
+    (let bind-loop ([tree (if lift-all? (lift-all-let* orig-tree) orig-tree)]
                     [iter 0])
       ;; Count the number of occurrences of each list (really, subtree).
       ;; Doing this at each iteration is probably not the most efficient strategy.
@@ -238,13 +251,13 @@
 
       ;; Find the largest sub-tree that appears the most times.
       ;; 'index' = the expression tree
-      (define-values (best-count _best-k best-subtree)
-        (hash-best+key+index h (λ (n.s1 n.s2)
+      (define-values (best-count best-subtree _best-k)
+        (hash-best+key+value h (λ (n.s1 n.s2)
                                  (or (> (car n.s1) (car n.s2))
                                      (and (= (car n.s1) (car n.s2))
                                           (> (cdr n.s1) (cdr n.s2)))))
                              ; Use a key to calculate the tree size only once
-                             #:key (λ (t n-occs) (cons n-occs (tree-size t)))))
+                             #:value (λ (t n-occs) (cons n-occs (tree-size t)))))
 
       #;(debug best-count _best-k best-subtree)
   
@@ -252,6 +265,7 @@
       (cond
         [(or (not best-count) ; empty hash
              (= 1 best-count)) ; Can't reduce anything.
+         #;#;(newline)(debug tree)
          ;; Trigger automatc-simplify only if any change has been made.
          (if (= iter 0)
            orig-tree ; don't change anything (no renaming)
@@ -268,6 +282,78 @@
                      (list (list id best-subtree))
                      (substitute/no-simplify tree best-subtree id))
                     (+ iter 1))]))))
+;; Recursively replaces the most used sub-expression (syntactic check) in tree
+;; with a let* binding and returns the result.
+;; Returns the original expression if no sub-expression occurs at least twice.
+;; This is probably not the most efficient implementation.
+;; TODO: There is no need to lift all sublet* to the top level. We only need to
+;; start by contracting all the sublet* before doing the upper levels.
+(define (contract-let* tree)
+  ;; First lift all sublet* to the top level (and rename all ids).
+  ;; This avoids extracting ids out of their context.
+  (let batch-loop ([orig-tree (lift-all-let* tree)])
+    (let ([tree orig-tree])
+      ;; Count the number of occurrences of each list (really, subtree).
+      ;; Doing this at each iteration is probably not the most efficient strategy.
+      (define h (make-hash)) ; subtree -> count
+      (let loop ([tree tree])
+        (match tree
+          [`(let* ([,ids ,vals] ...) ,body)
+           ; We can't compress ids, only expressions
+           (loop body)
+           (for-each loop vals)]
+          [(? list?)
+           (hash-update! h tree add1 0)
+           (for-each loop tree)]
+          [else (void)]))
+
+      ;; Turn the hash into a list, sorted first by #occurrences, then by tree-size
+      ;; (this order is important).
+      (define counts
+        (sort (hash->list h)
+              (λ (n.s1 n.s2)
+                (or (> (car n.s1) (car n.s2))
+                    (and (= (car n.s1) (car n.s2))
+                         (> (cdr n.s1) (cdr n.s2)))))
+              ; Use a key to calculate the tree size only once
+              #:key (λ (t.n-occs) (cons (cdr t.n-occs) (tree-size (car t.n-occs))))
+              #:cache-keys? #t))
+
+      ;; subst : (listof (list/c tree? id))
+      ;; This loop creates a list of bindings based on the number of occurrences
+      ;; of each subtree, starting with the most occurring one.
+      (let loop ([tree tree] [counts counts] [subst '()])
+        (cond
+          [(or (empty? counts)
+               (= 1 (cdr (first counts))))
+           (if (empty? subst)
+             orig-tree ; return the original tree (eq?) if no change
+             ; At least one subtree has been factored-out, so we restart the counting from
+             ; scratch in case new factorable subtrees have appeared.
+             (batch-loop
+              (automatic-simplify
+               ; we need to merge with the top level bindings otherwise we may lose some,
+               ; if some r.h.s. have been factored out.
+               (try-merge-let*-bindings
+                (reverse (map reverse subst))
+                tree))))]
+          [else
+           ;; The next subtree that occurs the most.
+           ;; First, 
+           (define best-subtree
+             ; (reverse subst) because we need to make sure that the best subtree is first.
+             (sequential-substitute (car (first counts)) (reverse subst) #:simplify? #f))
+           (define id (default-make-id))
+         
+           ;; Observe that for every sub-tree t1 of best-subtree,
+           ;; then n-occs(t1) ≥ n-occs(best-subtree), and furthermore 
+           ;; if n-occs(t1) > n-occs(best-subtree), then t1 has necessarily been selected
+           ;; before best-subtree.
+           ;; if n-occs(t1) = n-occs(best-subtree), then t1 appears only within best-subtree,
+           ;; and so cannot be selected before (and will not be selected later).
+           (loop (substitute/no-simplify tree best-subtree id) ; replace best-subtree with id in tree
+                 (rest counts)
+                 (cons (list best-subtree id) subst))])))))
 
 ;; For associative+commutative variadic operators like + and *.
 ;; We care only about non-lists, since lists are dealt with contract-let*.
@@ -293,8 +379,8 @@
             (hash-update! counts (cons x y) add1 0)))))
 
     ;; Find the best co-occurrence pair and its number of occs.
-    (define-values (best-n _best-n best-p)
-      (hash-best+key+index counts >))
+    (define-values (best-n best-p _best-n)
+      (hash-best+key+value counts >))
     
     (cond
       [(or (not best-n)
@@ -360,11 +446,22 @@
   (match u
     [`(let* (,bindings ...) ,body) ; ps are pairs
      ;; Recursively replace the ids with their values
-     (define subst
-       (for/fold ([subst '()]) ; substitution list (not an assoc)
-                 ([bind (in-list bindings)])
-         (define new-val (recurrent-substitute (cadr bind) subst))
-         (cons (list (car bind) new-val) subst)))
-     (recurrent-substitute body subst)]
+     (define subst (make-hasheq))
+     (for ([bind (in-list bindings)])
+       (define id (first bind))
+       (define expr (second bind))
+       (hash-set! subst id (substitute/dict expr subst)))
+     (substitute/dict body subst)]
     [else u]))
 
+;; Returns the list of ids that are not bound in a let* and are not functions.
+(define (unbound-ids tree)
+  (define prefix "_NO_")
+  (define h (make-hasheq))
+  (let loop ([tree (rebind-all-let* tree #:make-id (make-make-id prefix))])
+    (cond [(and (symbol? tree)
+                (not (string-prefix? (symbol->string tree) prefix))
+                (not (symbol->function tree)))
+           (hash-set! h tree #t)]
+          [(list? tree) (for-each loop tree)]))
+  (hash-keys h))
