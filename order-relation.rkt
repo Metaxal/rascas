@@ -7,139 +7,140 @@
 
 (provide term
          const
-          
          order-relation)
 
-  ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (define (term u)
+(define (term u)
 
-    (match u
-      [(? number?) #f]
-      [`(* ,(and u1 (? number?)) . ,u-rest)
-       `(* ,@u-rest)]
-      [`(* . ,u-elts) u]
-      [else `(* ,u)]))
+  (match u
+    [(? number?) #f]
+    [`(* ,(and u1 (? number?)) . ,u-rest)
+     `(* ,@u-rest)]
+    [`(* . ,u-elts) u]
+    [else `(* ,u)]))
 
-  ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (define (const u)
-    (match u
-      [(? number?) #f]
-      [`(* ,(and u1 (? number?)) . ,u-rest)
-       u1]
-      [`(* . ,u-elts) 1]
-      [else 1]))
+(define (const u)
+  (match u
+    [(? number?) #f]
+    [`(* ,(and u1 (? number?)) . ,u-rest)
+     u1]
+    [`(* . ,u-elts) 1]
+    [else 1]))
 
-  ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (define (O-3 u-elts v-elts)
-    (cond ((null? u-elts) #t)
-          ((null? v-elts) #f)
-          (else
-           (let ((u (car u-elts))
-                 (v (car v-elts)))
-             (if (not (equal? u v))
-                 (order-relation u v)
-                 (O-3 (cdr u-elts)
-                      (cdr v-elts)))))))
+;; TODO: <=> comparators
 
-  (define (order-relation u v [already-exchanged? #f])
+(define (O-3 u-elts v-elts)
+  (cond ((null? u-elts) #t)
+        ((null? v-elts) #f)
+        (else
+         (let ((u (car u-elts))
+               (v (car v-elts)))
+           (if (not (equal? u v))
+             (order-relation u v)
+             (O-3 (cdr u-elts)
+                  (cdr v-elts)))))))
 
-    (define uop (operator-kind u))
-    (define vop (operator-kind v))
+(define (order-relation u v [already-exchanged? #f])
 
-    (cond ((and (number? u)
-                (number? v)) ;; O-1
-           (< u v))
+  (define uop (operator-kind u))
+  (define vop (operator-kind v))
 
-          ((and (symbol? u)
-                (symbol? v)) ;; O-2
+  (cond ((and (number? u)
+              (number? v)) ;; O-1
+         (< u v))
 
-           (symbol<? u v))
+        ((and (symbol? u)
+              (symbol? v)) ;; O-2
 
-          [(eq? 'let* uop)
-           (not (order-relation v (list-ref u 2)))]
+         (symbol<? u v))
 
-          ((or (and (product? u)
-                    (product? v))
-               (and (sum?     u)
-                    (sum?     v))) ;; O-3
-           (O-3 (reverse (cdr u))
-                (reverse (cdr v))))
+        [(eq? 'let* uop)
+         (not (order-relation v (list-ref u 2)))]
 
-          ((and (power? u)
-                (power? v)) ;; O-4
+        ((or (and (product? u)
+                  (product? v))
+             (and (sum?     u)
+                  (sum?     v))) ;; O-3
+         (O-3 (reverse (cdr u))
+              (reverse (cdr v))))
 
-           (if (equal? (base u)
-                       (base v))
+        ((and (power? u)
+              (power? v)) ;; O-4
 
-               (order-relation (exponent u)
-                               (exponent v))
+         (if (equal? (base u)
+                     (base v))
 
-               (order-relation (base u)
-                               (base v))))
+           (order-relation (exponent u)
+                           (exponent v))
 
-          ((and (factorial? u)
-                (factorial? v)) ;; O-5
+           (order-relation (base u)
+                           (base v))))
 
-           (order-relation (list-ref u 1)
-                           (list-ref v 1)))
+        ((and (factorial? u)
+              (factorial? v)) ;; O-5
 
-          ((and (function? u)
-                (function? v)) ;; O-6
+         (order-relation (list-ref u 1)
+                         (list-ref v 1)))
 
-           (if (equal? (car u)
-                       (car v))
+        ((and (function? u)
+              (function? v)) ;; O-6
 
-               (O-3 (cdr u)
-                    (cdr v))
+         (if (equal? (car u)
+                     (car v))
 
-               (order-relation (car u)
-                               (car v))))
+           (O-3 (cdr u)
+                (cdr v))
 
-          ((and (number? u)
-                (not (number? v))) ;; O-7
-           #t)
+           (order-relation (car u)
+                           (car v))))
 
-          ((and (product? u)
-                (or (power? v)
-                    (sum? v)
-                    (factorial? v)
-                    (function? v)
-                    (symbol? v))) ;; O-8
-           (order-relation u `(* ,v)))
+        ((and (number? u)
+              (not (number? v))) ;; O-7
+         #t)
 
-          ((and (power? u)
-                (or (sum? v)
-                    (factorial? v)
-                    (function? v)
-                    (symbol? v))) ;; O-9
+        ((and (product? u)
+              (or (power? v)
+                  (sum? v)
+                  (factorial? v)
+                  (function? v)
+                  (symbol? v))) ;; O-8
+         (order-relation u `(* ,v)))
 
-           (order-relation u `(^ ,v 1)))
+        ((and (power? u)
+              (or (sum? v)
+                  (factorial? v)
+                  (function? v)
+                  (symbol? v))) ;; O-9
 
-          ((and (sum? u)
-                (or (factorial? v)
-                    (function? v)
-                    (symbol? v))) ;; O-10
+         (order-relation u `(^ ,v 1)))
 
-           (order-relation u `(+ ,v)))
+        ((and (sum? u)
+              (or (factorial? v)
+                  (function? v)
+                  (symbol? v))) ;; O-10
 
-          ((and (factorial? u)
-                (or (function? v)
-                    (symbol? v))) ;; O-11
+         (order-relation u `(+ ,v)))
+
+        ((and (factorial? u)
+              (or (function? v)
+                  (symbol? v))) ;; O-11
            
-           (if (equal? (list-ref u 1) v)
-               #f
-               (order-relation u `(! ,v)))) ; ???
+         (if (equal? (list-ref u 1) v)
+           #f
+           (order-relation u `(! ,v)))) ; ???
 
-          ((and (function? u)
-                (symbol? v)) ;; O-12
-           (if (equal? (car u) v)
-               #f
-               (order-relation (car u) v)))
+        ((and (function? u)
+              (symbol? v)) ;; O-12
+         (if (equal? (car u) v)
+           #f
+           (order-relation (car u) v)))
 
-          [already-exchanged?
-           (error "Cannot find an order relation for " (list u v))]
-          (else ;; O-13
-           (not (order-relation v u #t)))))
+        [already-exchanged?
+         (error "Cannot find an order relation for " (list u v))]
+        (else ;; O-13
+         (not (order-relation v u #t)))))
