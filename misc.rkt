@@ -7,7 +7,8 @@
          racket/match
          racket/math
          syntax/location
-         (for-syntax racket/base))
+         (for-syntax racket/base)
+         "color-printf.rkt")
 
 (provide pi
          debug
@@ -100,9 +101,11 @@
 (define-syntax-rule (ids->assoc id ...)
   (list (cons 'id id) ...))
 
+
+
 (define-syntax-rule (debug expr ...)
   (begin
-    (printf "~a = ~a\n" 'expr expr)
+    (printf "~a = ~a\n" 'expr expr #:color 'blue)
     ...))
 
 (define-syntax-rule (debug-expr expr)
@@ -117,8 +120,9 @@
          (define-values (res cpu real gc)
            (time-apply (λ () body ...) '()))
          ; Print afterwards in case body includes other time/lines.
-         (printf "Line: ~a\tFile: ~a\n" (quote-line-number #,stx) (quote-source-file #,stx))
-         (printf "cpu time: ~a real time: ~a gc time: ~a\n" cpu real gc)
+         (printf "cpu time: ~a real time: ~a gc time: ~a line ~a file ~a\n"
+                 cpu real gc (quote-line-number #,stx) (quote-source-file #,stx)
+                 #:color 'orange)
          (apply values res))]))
 
 ;=============;
