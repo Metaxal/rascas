@@ -228,8 +228,8 @@
   (_let* bindings new-body))
 
 
-
-#;(define (contract-let* tree)
+#;
+(define (contract-let* tree)
   (let batch-loop ([orig-tree tree] [lift-all? #t])
     ;; First lift all sublet* to the top level (and rename all ids).
     ;; This avoids extracting ids out of their context.
@@ -282,6 +282,7 @@
                      (list (list id best-subtree))
                      (substitute/no-simplify tree best-subtree id))
                     (+ iter 1))]))))
+
 ;; Recursively replaces the most used sub-expression (syntactic check) in tree
 ;; with a let* binding and returns the result.
 ;; Returns the original expression if no sub-expression occurs at least twice.
@@ -295,7 +296,7 @@
     (let ([tree orig-tree])
       ;; Count the number of occurrences of each list (really, subtree).
       ;; Doing this at each iteration is probably not the most efficient strategy.
-      (define h (make-hash)) ; subtree -> count
+      (define occs (make-hash)) ; subtree -> count
       (let loop ([tree tree])
         (match tree
           [`(let* ([,ids ,vals] ...) ,body)
@@ -303,14 +304,14 @@
            (loop body)
            (for-each loop vals)]
           [(? list?)
-           (hash-update! h tree add1 0)
+           (hash-update! occs tree add1 0)
            (for-each loop tree)]
           [else (void)]))
 
       ;; Turn the hash into a list, sorted first by #occurrences, then by tree-size
       ;; (this order is important).
       (define counts
-        (sort (hash->list h)
+        (sort (hash->list occs)
               (λ (n.s1 n.s2)
                 (or (> (car n.s1) (car n.s2))
                     (and (= (car n.s1) (car n.s2))
@@ -319,9 +320,21 @@
               #:key (λ (t.n-occs) (cons (cdr t.n-occs) (tree-size (car t.n-occs))))
               #:cache-keys? #t))
 
+      ;; Sequentially substitute the subtrees with ids, starting with the most occurring
+      ;; and largest.
+      ;; `occs` is reused (in reverse) to skip subtrees that occur no more than one parent tree.
+      ;;
+      ;; Let t2 be a subtree of t1, with respective number of occurrences n2 and n1
+      ;; and tree size s2 and s1.
+      ;; First, we necessarily have n2 ≥ n1 and s1 > s2.
+      ;; a) Suppose n2 = n1, then t2 occurs each time t1 occurs. Since s1 > s2, t1
+      ;; appears in `counts` earlier than t2, so after t1 is substituted with an id in tree,
+      ;; neither t1 nor t2 appear anymore. This means that we can skip t2 when pulled from
+      ;; `counts`.
+      ;; b) Suppose now that n2 > n1, then t2 appears in `counts` before t1, so when pulling
+      ;; t1 from `counts`, t2 is already in subst and is thus substituted with its id in t1.
+      ;;
       ;; subst : (listof (list/c tree? id))
-      ;; This loop creates a list of bindings based on the number of occurrences
-      ;; of each subtree, starting with the most occurring one.
       (let loop ([tree tree] [counts counts] [subst '()])
         (cond
           [(or (empty? counts)
@@ -337,21 +350,33 @@
                (try-merge-let*-bindings
                 (reverse (map reverse subst))
                 tree))))]
+          [(not (hash-has-key? occs (car (first counts))))
+           ;; Case a) described above: we can skip the current subtree.
+           ;; We re-use `occs` in the opposite way: When a subtree is substituted,
+           ;; all its subtrees are removed from `occs`, so if a subtree doesn't appear in `occs`
+           ;; it means it can be safely skipped.
+           (loop tree (rest counts) subst)]
           [else
            ;; The next subtree that occurs the most.
-           ;; First, 
+           ;; First, apply the previous substitutions to the subtree.
            (define best-subtree
-             ; (reverse subst) because we need to make sure that the best subtree is first.
              (sequential-substitute (car (first counts)) (reverse subst) #:simplify? #f))
            (define id (default-make-id))
-         
-           ;; Observe that for every sub-tree t1 of best-subtree,
-           ;; then n-occs(t1) ≥ n-occs(best-subtree), and furthermore 
-           ;; if n-occs(t1) > n-occs(best-subtree), then t1 has necessarily been selected
-           ;; before best-subtree.
-           ;; if n-occs(t1) = n-occs(best-subtree), then t1 appears only within best-subtree,
-           ;; and so cannot be selected before (and will not be selected later).
-           (loop (substitute/no-simplify tree best-subtree id) ; replace best-subtree with id in tree
+
+           ;; Remove all the subtrees of best-subtree from `occs`, for future a) cases.
+           (let loop ([tree best-subtree])
+             (match tree
+               [`(let* ([,ids ,vals] ...) ,body)
+                ; We can't compress ids, only expressions
+                (loop body)
+                (for-each loop vals)]
+               [(? list?)
+                (hash-remove! occs tree)
+                (for-each loop tree)]
+               [else (void)]))
+
+           ;; Replace best-subtree with id in tree and continue with the next potential substitution.
+           (loop (substitute/no-simplify tree best-subtree id)
                  (rest counts)
                  (cons (list best-subtree id) subst))])))))
 
