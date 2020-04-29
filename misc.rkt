@@ -13,7 +13,7 @@
 (provide pi
          debug
          debug-expr
-         time/line
+         (rename-out [time/line time])
          ids->assoc
          symbol-format
          try-apply-number
@@ -105,7 +105,7 @@
 
 (define-syntax-rule (debug expr ...)
   (begin
-    (printf "~a = ~a\n" 'expr expr #:color 'blue)
+    (printf "~a = ~a\n" 'expr expr #:color 'orange)
     ...))
 
 (define-syntax-rule (debug-expr expr)
@@ -120,9 +120,9 @@
          (define-values (res cpu real gc)
            (time-apply (λ () body ...) '()))
          ; Print afterwards in case body includes other time/lines.
-         (printf "cpu time: ~a real time: ~a gc time: ~a line ~a file ~a\n"
+         (printf "cpu time: ~a real time: ~a gc time: ~a line: ~a file: ~a\n"
                  cpu real gc (quote-line-number #,stx) (quote-source-file #,stx)
-                 #:color 'orange)
+                 #:color 'magenta)
          (apply values res))]))
 
 ;=============;
