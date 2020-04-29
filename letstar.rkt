@@ -1,11 +1,12 @@
 #lang racket/base
-(require "misc.rkt"
+(require racket/list
+         racket/match
+         racket/string
+         syntax/parse/define
+         "misc.rkt"
          "substitute.rkt"
          "automatic-simplify.rkt"
          "order-relation.rkt"
-         racket/list
-         racket/match
-         racket/string
          )
 
 (provide _let*
@@ -18,13 +19,16 @@
          rebind-let*
          rebind-all-let*
          variadic-replace
-         unbound-ids)
+         unbound-ids
+         make-binder
+         with-binder
+         slet*)
 
 ;;; There are many differences with Scheme/Racket's let*.
 ;;; - ids have a more global scope (for now).
 ;;; - ids can't shadow previous ids (or it may lead to inconsistencies)
 ;;; - there can't be twice the same id in the same let* (which is also shadowing).
-;;; - ids are sorted automatically in dependency order.
+;;; - ids are sorted automatically in dependency (topological) order.
 ;;; - ...
 
 ;;; The make-id mechanism allows to keep consistent naming by making functions
@@ -55,9 +59,10 @@
 (define _let*
   (match-lambda*
     [`( ,(list bindings ...) ,body)
+     ;; First, make sur the bindings are in topological order.
+     ;; Then recursively reduce the bindings to atomic expressions if possible,
+     ;; and substitute back in if reduced.
      (let ([bindings (sort-bindings bindings)])
-       ;; Recursively reduce the bindings to atomic expressions if possible,
-       ;; and substitute back in if reduced.
        (define subst (make-hasheq))
        (define new-bindings
          (for/fold ([new-bindings '()] ; new list of binding to keep in let*
@@ -490,3 +495,45 @@
            (hash-set! h tree #t)]
           [(list? tree) (for-each loop tree)]))
   (hash-keys h))
+
+
+;; Use (bind! expr) to get an id instead of an expr,
+;; so as to construct a let* graph without duplication.
+(define (make-binder)
+  (define bindings (make-hasheq))
+  (define (bind! expr)
+    (define id (default-make-id))
+    (hash-set! bindings id expr)
+    id)
+  (define (make-let* body)
+    (_let* (hash-map bindings list) body))
+  (values bind! make-let*))
+
+;; A more convenient form of `make-binder` when body returns a single value which is the expression
+;; to encapsulate into a let*.
+(define-syntax-rule (with-binder (bind!) body ...)
+  (let-values ([(bind! make-let*) (make-binder)])
+    (make-let* (begin body ...))))
+
+;; Symbolic let* macro. Just like let*, but for the symbolic world:
+;; the resulting symbolic expression itself contains a let* (with different ids for safety).
+;; An even more convenient form of `make-binder` that looks very much like let*.
+;; body must return a single s-expression.
+(define-simple-macro (slet* ([id:id expr:expr] ...) body:expr ...)
+  (let-values ([(bind! make-let*) (make-binder)])
+    (let ([id (bind! expr)] ...)
+      (make-let* (begin body ...)))))
+
+;; Compare the results of:
+#;(let ([a (* 'x 'y)]
+        [b (+ 'x 'y)])
+    (* a b (log a) (exp b)))
+; -->
+#;'(* (exp (+ x y)) (+ (log x) (log y)) x y (+ x y))
+;
+#;(slet* ([a (* 'x 'y)]
+          [b (+ 'x 'y)])
+         (* a b (log a) (exp b)))
+; -->
+#;'(let* ((__s3 (+ x y)) (__s2 (* x y))) (* __s2 __s3 (exp __s3) (log __s2)))
+
