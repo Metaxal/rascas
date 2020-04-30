@@ -11,9 +11,8 @@
          (prefix-in rkt: (only-in math/number-theory factorial binomial))
          racket/list)
 
-(provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn
+(provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn dirac
          exp log ! (rename-out [! factorial])
-         >0 >=0 _> _< _if
          expand-main-op
          expand-exp
          expand-power
@@ -105,43 +104,6 @@
                 3.2)
   (check-equal? (abs 'x)
                 '(abs x)))
-
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; if and tests
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;; A few primitives
-
-(define (>0 x)
-  (if (number? x)
-    (if (> x 0) 1 0)
-    `(>0 ,x)))
-(register-function '>0 >0)
-(register-derivative '>0 dirac)
-
-(define (>=0 x)
-  (if (number? x)
-    (if (>= x 0) 1 0)
-    `(>=0 ,x)))
-(register-function '>=0 >=0)
-(register-derivative '>=0 dirac)
-
-;;; The following are not primitives and so don't need derivatives.
-
-;; This is not really 'algorithmic' as it's not real flow-control.
-;; TODO: avoid doing `test` twice. Use a _let*?
-(define (_if test y n)
-  (+ (* test y)
-     (* (- 1 test) n)))
-(register-function 'if _if)
-
-(define (_> a b)
-  (>0 (- a b)))
-(register-function '> _>) ; only for reduction
-
-(define (_< a b)
-  (>0 (- b a)))
-(register-function '< _<)
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; ^
@@ -478,6 +440,8 @@
                 '(+ 7 (* 5 a) (* 2 (exp x))))
   (check-equal? (+ (* 'a 'x) 'b)
                 '(+ b (* a x))))
+
+;; TODO: for/sum by for/fold/derived
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; -
