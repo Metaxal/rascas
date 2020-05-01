@@ -11,7 +11,7 @@
 ;;; https://github.com/grzegorzmazur/yacas/tree/master/tests
 
 (require (only-in srfi/1 lset=)
-         "main.rkt"
+         "../main.rkt"
          (for-syntax racket/base)
          racket/format
          rackunit)
