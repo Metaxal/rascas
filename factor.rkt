@@ -22,6 +22,8 @@
 ;; WARNING: This function does *not* check whether the operator `times` actually distributes
 ;; over the operator `plus`, so this may lead to erroneous output.
 ;; TODO: I think the current algorithm does far too much work. There must be a nicer way.
+;; TODO: We should start by factoring all the lower levels first, then going up. Then a single
+;; pass should be sufficient.
 (define (factor t times plus
                 #:times-neutral [times-neutral no-neutral])
   (define times-fun (or (symbol->function times) (no-fun times)))

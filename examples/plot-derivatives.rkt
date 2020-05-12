@@ -13,7 +13,7 @@
 ;; Build derivatives up to the 6th order.
 (define dfs
   (for/fold ([dfs (list fx)])
-            ([i 6 #;8])
+            ([i 6])
     (cons (smart-simplify (derivative (first dfs) 'x))
           dfs)))
 
