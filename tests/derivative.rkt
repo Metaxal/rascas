@@ -209,3 +209,14 @@
           (* (log a) (log b))))
     '(a b)))
  '(list 0 0))
+
+
+;; Compare:
+#;(tree-size (jacobian (apply * (build-list 100 (λ (i) (+ i 1 'x))))
+            '(x)))
+#;(tree-size (jacobian (apply * (build-list 100 (λ (i) (+ i 1 'x))))
+            '(x))
+             #:log-product? #t)
+
+
+

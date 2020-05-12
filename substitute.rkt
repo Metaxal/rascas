@@ -30,6 +30,8 @@
 ;; Returns u where t has been substituted with r, and apply automatic-simplification only
 ;; if any change has occurred.
 ;; BETTER: simplify along the branch of the change only.
+;; TODO: If t appears more than once, and r is a compound expression, shouldn't
+;; we instead wrap with a let*?
 (define (substitute u t r)
   (define-values (new-u changed?)
     (substitute/no-simplify+? u t r))
@@ -153,10 +155,9 @@
     ;; Substitutions are provided as 2 lists.
     ;; Make a dictionary (hasheq) and 
     [(u syms vals)
-     (unless (= (length syms) (length vals))
+     (unless (= (length syms) (length vals)) ; although this test is already done by map below
        (raise-arguments-error 'apply// "syms and vals must have the same lengths"))
-     (substitute/dict u (make-hasheq (map cons syms vals)))] ; immutable?
-    ))
+     (substitute/dict u (make-hasheq (map cons syms vals)))])) ; immutable?
 
 (define no-key (gensym))
 
@@ -210,6 +211,8 @@
 
 ;; Returns a racket procedure from the tree
 ;; If inexact? is not #f, all numbers are turned into inexact numbers.
+;; NOTICE: Also see 'eval-module.rkt' which exports another tree->procedure
+;; but that compiles to racket.
 (define (tree->procedure tree
                          #:inexact? [inexact? #f]
                          . syms)

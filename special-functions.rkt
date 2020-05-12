@@ -7,10 +7,14 @@
 (provide gamma psi0 erf erfc lambert lambert- zeta eta
          Fresnel-S Fresnel-C Fresnel-RS Fresnel-RC)
 
-;; TODO: a mechanism to add matchers for different functions,
-;; for example (+ (^ (cos x) 2) (^ (sin x) 2) reduces to 1.
-;; or (log (gamma x)) is calculated with rkt:log-gamma.
-;; The matcher would be on the main operator, here '+.
+;; TODO: a mechanism to add matchers for different functions and useful identities,
+;; for example (+ (^ (cos x) 2) (^ (sin x) 2) reduces to 1,
+;; or (* X (gamma Y) (^ (gamma (+ 1 Y)) -1) = (* X (^ Y -1)),
+;; or (log (gamma x)) is calculated with rkt:log-gamma
+;;
+;; The matcher would be on the main operator, here '+ or '*.
+;; But we need something fast such that adding many rules doesn't slow down
+;; everything.
 
 ;; https://en.wikipedia.org/wiki/Gamma_function
 (define-simple-function gamma       rkt:gamma)
@@ -27,6 +31,8 @@
 (define-simple-function Fresnel-RC  rkt:Fresnel-RC)
 
 (register-derivative 'gamma (λ (v) (* (gamma v) (psi0 v))))
+
+;; TODO: Special values for gamma: 1/2, 3/2, ...
 
 (module+ test
   (require rackunit

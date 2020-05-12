@@ -9,7 +9,8 @@
          (prefix-in rkt: (only-in racket/base + * expt abs / exp sqrt log))
          (prefix-in rkt: (only-in racket/math sgn))
          (prefix-in rkt: (only-in math/number-theory factorial binomial))
-         racket/list)
+         racket/list
+         (for-syntax racket/base))
 
 (provide + - * ^ / (rename-out [^ expt]) sqr sqrt abs sgn dirac
          exp log ! (rename-out [! factorial])

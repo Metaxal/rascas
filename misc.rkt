@@ -42,7 +42,7 @@
          even-number?
          nonempty-list?
          operator-kind
-         length<=
+         length<= length>=
          product? quotient? sum? difference? power? factorial? function?
          exp?
          log?
@@ -142,21 +142,20 @@
         [(empty? l) #t]
         [else (length<= (rest l) (- n 1))]))
 
+(define (length>= l n)
+  (cond [(<= n 0) #t]
+        [(empty? l) #f]
+        [else (length>= (rest l) (- n 1))]))
+
 (module+ test
-  (check-equal? (length<= '() 0)
-                #t)
-  (check-equal? (length<= '() -1)
-                #f)
-  (check-equal? (length<= '(a) 0)
-                #f)
-  (check-equal? (length<= '(a) 1)
-                #t)
-  (check-equal? (length<= '(a b) 1)
-                #f)
-  (check-equal? (length<= '(a b) 2)
-                #t)
-  (check-equal? (length<= '(a b) 3)
-                #t))
+  (for* ([l (in-list '(() (a) (a b c)))]
+         [n (in-list '(-1 0 1 2 3 4))])
+    (define m (length l))
+    (check-equal? (length<= l n)
+                  (<= m n))
+    (check-equal? (length>= l n)
+                  (>= m n)
+                  (format "l: ~a n: ~a\n" l n))))
 
 (define (rev-append l1 l2)
   (if (null? l1)
@@ -330,6 +329,8 @@
 ;; automatic-simplify or ->inexact are called, the occurrence of the
 ;; symbol in prefix position triggers a call to the function fun.
 (define (register-function sym fun)
+  (unless (symbol? sym)
+    (raise-argument-error 'register-function "symbol?" sym))
   (if (hash-has-key? function-dict sym)
     (error "function symbol already defined" sym)
     (hash-set! function-dict sym fun)))

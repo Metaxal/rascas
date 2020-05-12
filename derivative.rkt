@@ -31,6 +31,10 @@
        [`(+ . ,vs)
         (apply + (map (λ (v) (derivative v x))
                       vs))]
+       #;[`(* . ,ws)
+        ;; Can lead to nan for zeros of u (instead of 0), but otherwise expands linearly
+        ;; instead of quadratically.
+        (* u (derivative (log u) x))]
        [`(* ,v . ,ws)
         ; This can take quadratic time with the number of arguments but doesn't
         ; produce inverses like the variant above.
@@ -77,8 +81,11 @@
             ;; TODO: Don't recompute the args, use a let* to compress.
             ;; unless only one arg
             (apply + (map (λ (df arg)
-                            (* (apply df args)
-                               (derivative arg x)))
+                            (define d-arg-x (derivative arg x))
+                            (if (zero? d-arg-x)
+                              d-arg-x
+                              (* (apply df args)
+                                 d-arg-x)))
                           dfs
                           args)))
           `(derivative ,u ,x))]
@@ -119,8 +126,23 @@
 ;; Go through the bindings in *reverse* order,
 ;; collect the derivative along each branch,
 ;; and when hitting an input symbol x, collect in a hash.
-;; Finally, build the let* with a list 
-(define (jacobian tree xs)
+;; Finally, build the _let* with a _list.
+;;
+;; If `log-product?` is not #f, then products of more than 8 elements
+;; use the rule dprod/dx = prod × dlog(prod)/dx which can lead to a more space-efficient
+;; representation.
+;; This has the drawback that zeros of the product may lead to +nan.0 instead of 0 in the derivative,
+;; but for some cases this is ok (like gradient descent).
+;; (8 because n(n-1)/2 > 2n when n ≥ 6, but we add a small penalty for the inconvenience.)
+;; It can be a good idea to apply factor-product afterwards (not done automatically due to
+;; potentially large cost).
+;;
+;; If `+tree?` is not #f, then the first argument of the _list of the returned tree is
+;; the tree itself. This can be useful to share code and computation time as a lot of the tree
+;; is reused in the jacobian.
+(define (jacobian tree xs
+                  #:+tree? [+tree? #f]
+                  #:log-product? [log-product? #f])
   (define rev-bindings (make-hash)) ; expr -> id
   (define hbindings (make-hasheq)) ; id -> expr
   ;; Step 1, create a computation graph (bindings are nodes)
@@ -139,13 +161,21 @@
              (hash-set! rev-bindings new-id id)) ; not useful?
            ;; TODO: What if the binding already exists?
            (loop body)]
+          ;; If log-product is #f, deconstruct products into binary products as they may lead
+          ;; to quadritically too many terms otherwise.
+          [`(* ,v)
+           (loop v)]
+          [`(* ,v . ,ws)
+           #:when (not log-product?)
+           (list '* (loop v) (loop `(* . ,ws)))]
+          ;; All other operators (including +)
           [`(,op . ,args)
            (cons op (map loop (cdr tree)))]
           [else tree]))
       (cond
         [(number? res) res]
         [(symbol? res) res]
-        [(hash-ref rev-bindings res #f)] ; reuse binding if possible
+        [(hash-ref rev-bindings res #f)] ; reuse binding if possible (this may be a little costly)
         [else
          (define id (default-make-id))
          (hash-set! hbindings id res)
@@ -153,6 +183,7 @@
          id])))
   ;; Step 2: backpropagation
   (define bindings (sort-bindings (hash-map hbindings list)))
+  #;(debug bindings)
   (define ids (map first bindings))
   ;; The derivative for each x is updated in the jach hash.
   ;; TODO: Use struct nodes instead of hashes?
@@ -173,21 +204,32 @@
              ; where A is d.f/d.other-ids.
              ; diffid will be bound to its derivative d.f/d.id in the resulting let*.
              (hash-update! jach expr (λ (A) (+ A diffid)))]
-            [(list? expr)
+            [(list? expr) ;; TODO: check operator is known? (derivative should do that though)
              ; For each subid (subexpr), calculate derivative.
-             (for ([subid (in-list (rest expr))])
-               (when (and (symbol? subid)
-                          (hash-has-key? jach subid))
+             (define subids (filter (λ (subid) (and (symbol? subid)
+                                                    (hash-has-key? jach subid)))
+                                    (rest expr)))
+             (if (and log-product?
+                      (eq? '* (operator-kind expr))
+                      (length>= expr 8))
+               (for ([subid (in-list subids)])
+                 ;; log-product rule. Leads to linearly many terms compared to quadratically many
+                 ;; for the default rule, but may lead to nan instead of 0 sometimes.
+                 (hash-update! jach subid (λ (A) (+ A (* diffid id (derivative (log expr) subid))))))
+               (for ([subid (in-list subids)])
                  ; Chain rule: d.f/d.subid = d.f/d.id × d.id/d.subid + A  (where A is d.f/d.other-ids)
                  ; diffid will be bound to its derivative d.f/d.id in the resulting let*.
                  (hash-update! jach subid (λ (A) (+ A (* diffid (derivative expr subid)))))))])
       ; Once we reach id, all its parents have been processed already,
       ; so its derivative is definitive and we can propagate to its children.
       (list* bind (list diffid (hash-ref jach id)) new-bindings)))
+  (define diffs (for/list ([x (in-list xs)])
+                  (hash-ref jach x)))
   (define new-body
     (apply _list
-           (for/list ([x (in-list xs)])
-             (hash-ref jach x))))
+           (if +tree?
+             (cons last-id diffs)
+             diffs)))
   #;(debug bindings new-bindings new-body)
   ;; Now we can reduce the let*
   ;; The simplify-top is in the likely case where some ids are used 0 times,
