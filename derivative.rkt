@@ -82,7 +82,7 @@
             ;; unless only one arg
             (apply + (map (λ (df arg)
                             (define d-arg-x (derivative arg x))
-                            (if (zero? d-arg-x)
+                            (if (zero-number? d-arg-x)
                               d-arg-x
                               (* (apply df args)
                                  d-arg-x)))
