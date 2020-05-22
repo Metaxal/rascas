@@ -110,7 +110,7 @@
 
 ;; Symmetric derivative.
 ;; Useful to check equality.
-(define (numeric-derivative f [ε 0.000001])
+(define (numeric-derivative f [ε 1.e-6])
   (λ (x)
     (/ (- (f (+ x ε)) (f (- x ε)))
        (* 2 ε))))
