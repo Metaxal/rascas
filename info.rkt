@@ -14,5 +14,6 @@
                      "data-lib"))
 (define scribblings '(("scribblings/rascas.scrbl" ())))
 (define pkg-desc "Computer Algebra System for Racket. Port of dharmatech/mpl.")
+(define test-omit-paths '("examples"))
 (define version "0.0")
 (define pkg-authors '(orseau))
