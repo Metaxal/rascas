@@ -283,7 +283,7 @@
         [(null? lres)
          ; Single element (number), remove '*.
          tot-nums]
-        [(eqv? 0 tot-nums) 0] ; Notice: `eqv?` and not `=`
+        [(= 0 tot-nums) tot-nums] ; Includes 0.0 and -0.0
         [(and (null? (cdr lres))
               (= 1 tot-nums))
          ; Single element (not number), remove '*.
@@ -329,9 +329,9 @@
    ; Overrides Racket's default, but consistent with NSpire and Wolfram Alpha
   (check-equal? (* 0 +nan.0) +nan.0)
 
-  (check-equal? (* 0 'x) 0) ; I'm still unsure about this one
-  (check-equal? (* 0.0 'x) '(* 0.0 x))
-  (check-equal? (* -0.0 'x) '(* -0.0 x))
+  (check-equal? (* 0 'x) 0) ; Numeric over symbolic
+  (check-equal? (* 0.0 'x) 0.0)
+  (check-equal? (* -0.0 'x) -0.0)
   (check-equal? (* -0.0 0.0) -0.0)
   )
 
