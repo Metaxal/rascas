@@ -17,9 +17,7 @@ Initially a port of @hyperlink["https://github.com/dharmatech/mpl"]{dharmatech/m
 but now incorporates lots of modifications.
 
 Rascas is still unstable and some behaviours may change without warning,
-but I'm trying to implement the following principles:
-least surprise, consistency, safety, speed, functionality.
-There's a lot of work to do on all these fronts.
+although normally only to make them more consistent.
 
 @section{Numeric over symbolic}
 
