@@ -75,6 +75,10 @@
   (check-equal? (sgn (sgn 'x)) (sgn 'x))
   (check-equal? (sgn (sgn (sgn 'x))) (sgn 'x))
   (check-equal? (sgn (abs 'x)) (sgn (abs 'x))) ; 0 or 1 (DiracDelta function)
+  (check-equal? (sgn +inf.0) 1.)
+  (check-equal? (sgn -inf.0) -1.)
+  (check-equal? (sgn +nan.0) +nan.0)
+  (check-equal? (sgn -nan.0) +nan.0)
   #;(check-equal? (* (sgn 'x) 'x) (abs 'x)) ; not checked for now
   )
 
@@ -101,8 +105,9 @@
                 3)
   (check-equal? (abs (* 'x 'x))
                 '(^ x 2))
-  (check-equal? (abs -3.2)
-                3.2)
+  (check-equal? (abs -3.2) 3.2)
+  (check-equal? (abs +inf.0) +inf.0)
+  (check-equal? (abs -inf.0) +inf.0)
   (check-equal? (abs 'x)
                 '(abs x)))
 
@@ -227,68 +232,6 @@
 ;; *
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Returns one of the absorbing elements 0, 0.0, -0.0, +nan.0, +inf.0, -inf.0.
-;; +nan.0 is contagious,
-;; zero and infinite make +nan.0,
-;; otherwise we follow racket's defaults.
-;; Racket's default is that 0*+inf.0 = 0, which I consider a suprising and risky result.
-;; Although I understand the logic, I prefer to return +nan.0 for safety.
-(define (absorb-product elts)
-  (let loop ([elts elts] [res #f])
-    (if (empty? elts)
-      res
-      (let ([x (first elts)])
-        (cond [(not (real? x)) ; +inf.0 and +nan.0 are reals(!)
-               (loop (rest elts) res)]
-              [(nan? x)
-               +nan.0]
-              [(and (not (infinite? x)) (not (zero? x)))
-               (loop (rest elts) res)]
-              [(not res)
-               (loop (rest elts) x)]
-              ; override some of racket's defaults
-              [(and (infinite? res) (zero? x))
-               +nan.0]
-              [(and (zero? res) (infinite? x))
-               +nan.0]
-              [else
-               ; otherwise use racket's default
-               (define new-res (if res (rkt:* res x) x))
-               (if (nan? new-res)
-                 +nan.0
-                 (loop (rest elts) new-res))])))))
-
-(module+ test
-  (check-equal? (absorb-product '(1 2))
-                #f)
-  (check-equal? (absorb-product '())
-                #f)
-  (check-equal? (absorb-product '(a b c))
-                #f)
-  (check-equal? (absorb-product '(a b 0))
-                0)
-  (check-equal? (absorb-product '(a +inf.0 b 0))
-                +nan.0)
-  (check-equal? (absorb-product '(a b 0. 0 c))
-                0)
-  (check-equal? (absorb-product '(a b 0. -0.0 -0.0 0 c))
-                0)
-  (check-equal? (absorb-product '(a b 0. -0.0 -0.0 c))
-                0.)
-  (check-equal? (absorb-product '(a b 0. -0.0 c))
-                -0.0)
-  (check-equal? (absorb-product '(a b 0. 0 -0.0 c +inf.0))
-                +nan.0)
-  (check-equal? (absorb-product '(a -inf.0 b -inf.0 c))
-                +inf.0)
-  (check-equal? (absorb-product '(a -inf.0 b +inf.0 c))
-                -inf.0)
-  (check-equal? (absorb-product '(a 0 b +inf.0 c))
-                +nan.0)
-  (check-equal? (absorb-product '(a -0.0 b -inf.0 c))
-                +nan.0)
-  )
-
 ;; Assumes that subexpressions (powers in particular) have already been reduced.
 (define (* . elts)
   ; Hash containing the sum of the exponents as a list (may be symbolic).
@@ -329,22 +272,19 @@
          lres]
         [else (cons pow lres)])))
   ; Return value.
-  (or
-   ; Check for absorption. If any, symbolic expression are considered to not matter.
-   (absorb-product nums)
-   (let ([tot-nums (apply rkt:* nums)])
-     (cond
-       [(null? lres)
-        ; Single element (number), remove '*.
-        tot-nums]
-       [(and (null? (cdr lres))
-             (= 1 tot-nums))
-        ; Single element (not number), remove '*.
-        (car lres)]
-       [(= 1 tot-nums)
-        (cons '* lres)]
-       [else
-        `(* ,tot-nums . ,lres)]))))
+  (let ([tot-nums (apply rkt:* nums)])
+    (cond
+      [(null? lres)
+       ; Single element (number), remove '*.
+       tot-nums]
+      [(and (null? (cdr lres))
+            (= 1 tot-nums))
+       ; Single element (not number), remove '*.
+       (car lres)]
+      [(= 1 tot-nums)
+       (cons '* lres)]
+      [else
+       `(* ,tot-nums . ,lres)])))
 (register-function '* *)
 
 (module+ test
@@ -370,7 +310,14 @@
         ( else (* r s) )))
 
 (module+ test
-  (check-equal? (* 0 +inf.0) +nan.0)
+  (check-equal? (* 1 +inf.0) +inf.0)
+  (check-equal? (* -1 +inf.0) -inf.0)
+  (check-equal? (* 0 +inf.0) 0)
+  (check-equal? (* 0. +inf.0) +nan.0)
+  (check-equal? (* 0 +nan.0) 0)
+  (check-equal? (* 0. +nan.0) +nan.0)
+  (check-equal? (* +inf.0 -inf.0) -inf.0)
+  (check-equal? (* +inf.0 +inf.0) +inf.0)
   (check-equal? (* 1 +nan.0) +nan.0)
   (check-equal? (* 1 +nan.0) +nan.0)
   )
@@ -456,6 +403,7 @@
 (module+ test
   (check-equal? (- 1 2 3) -4)
   (check-equal? (- 5) -5)
+  (check-equal? (- +inf.0) -inf.0)
   (check-equal? (- 'x) (* -1 'x))
   (check-equal? (- 'x 'y 'z) (+ 'x (* -1 (+ 'y 'z)))))
 (register-function '- -)
