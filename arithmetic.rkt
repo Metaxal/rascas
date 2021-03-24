@@ -167,6 +167,8 @@
   ; Checked with maxima for the harder cases
   (check-equal? (^ 'a 1) 'a)
   (check-equal? (^ 0 0) +nan.0)
+  (check-equal? (^ +nan.0 0) +nan.0) ; overrides Racket's default
+  (check-equal? (^ 0 +nan.0) +nan.0)
   (check-equal? (^ 0 -0.2) +nan.0)
   (check-equal? (^ 0 -2) +nan.0)
   (check-equal? (^ 'a 0) 1) ; WARNING: only for a≠0
@@ -241,50 +243,60 @@
   ; to apply the absorption loop at the end (instead of earlier).
   (define nums '())
   ;; Count how many elements of each kind, merging products and looking inside powers.
-  (let loop ([l elts])
-    (unless (null? l)
-      (define x (car l))
+  (define got-nan?
+    (let loop ([l elts])
       (cond
-        [(number? x)
-         (set! nums (cons x nums))
-         (loop (cdr l))]
-        [(product? x)
-         ; Merge products.
-         (loop (cdr x))
-         (loop (cdr l))]
-        [(power? x)
-         (define ba (base x))
-         (define ex (exponent x))
-         (hash-update! counts ba (λ (exps) (cons ex exps)) '())
-         (loop (cdr l))]
+        [(null? l) #f]
         [else
-         (hash-update! counts x (λ (exps) (cons 1 exps)) '())
-         (loop (cdr l))])))
-  ; End of loop, return a sorted and compact list
-  (define lres
-    (for/fold ([lres '()]
-               #:result (sort lres order-relation))
-              ([(x exps) (in-hash counts)])
-      (define pow (^ x (apply + exps)))
-      (cond
-        [(number? pow)
-         (set! nums (cons pow nums))
-         lres]
-        [else (cons pow lres)])))
-  ; Return value.
-  (let ([tot-nums (apply rkt:* nums)])
-    (cond
-      [(null? lres)
-       ; Single element (number), remove '*.
-       tot-nums]
-      [(and (null? (cdr lres))
-            (= 1 tot-nums))
-       ; Single element (not number), remove '*.
-       (car lres)]
-      [(= 1 tot-nums)
-       (cons '* lres)]
-      [else
-       `(* ,tot-nums . ,lres)])))
+         (define x (car l))
+         (cond
+           [(number? x)
+            (cond
+              [(and (real? x) (nan? x)) #t] ; fully absorbing
+              [else
+               (set! nums (cons x nums))
+               (loop (cdr l))])]
+           [(product? x)
+            ; Merge products.
+            (loop (cdr x))
+            (loop (cdr l))]
+           [(power? x)
+            (define ba (base x))
+            (define ex (exponent x))
+            (hash-update! counts ba (λ (exps) (cons ex exps)) '())
+            (loop (cdr l))]
+           [else
+            (hash-update! counts x (λ (exps) (cons 1 exps)) '())
+            (loop (cdr l))])])))
+  (cond
+    [got-nan? +nan.0]
+    [else
+     ; End of loop, return a sorted and compact list
+     (define lres
+       (for/fold ([lres '()]
+                  #:result (sort lres order-relation))
+                 ([(x exps) (in-hash counts)])
+         (define pow (^ x (apply + exps)))
+         (cond
+           [(number? pow)
+            (set! nums (cons pow nums))
+            lres]
+           [else (cons pow lres)])))
+     ; Return value.
+     (let ([tot-nums (apply rkt:* nums)])
+       (cond
+         [(null? lres)
+          ; Single element (number), remove '*.
+          tot-nums]
+         [(= 0 tot-nums) 0] ; 0 * symbolic = 0
+         [(and (null? (cdr lres))
+               (= 1 tot-nums))
+          ; Single element (not number), remove '*.
+          (car lres)]
+         [(= 1 tot-nums)
+          (cons '* lres)]
+         [else
+          `(* ,tot-nums . ,lres)]))]))
 (register-function '* *)
 
 (module+ test
@@ -313,13 +325,16 @@
   (check-equal? (* 1 +inf.0) +inf.0)
   (check-equal? (* -1 +inf.0) -inf.0)
   (check-equal? (* 0 +inf.0) 0)
-  (check-equal? (* 0. +inf.0) +nan.0)
-  (check-equal? (* 0 +nan.0) 0)
+  (check-equal? (* 0. +inf.0) +nan.0)  
   (check-equal? (* 0. +nan.0) +nan.0)
   (check-equal? (* +inf.0 -inf.0) -inf.0)
   (check-equal? (* +inf.0 +inf.0) +inf.0)
   (check-equal? (* 1 +nan.0) +nan.0)
   (check-equal? (* 1 +nan.0) +nan.0)
+   ; Overrides Racket's default, but consistent with NSpire and Wolfram Alpha
+  (check-equal? (* 0 +nan.0) +nan.0)
+
+  (check-equal? (* 0 'x) 0) ; I'm still unsure about this one
   )
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -404,6 +419,7 @@
   (check-equal? (- 1 2 3) -4)
   (check-equal? (- 5) -5)
   (check-equal? (- +inf.0) -inf.0)
+  (check-equal? (- +inf.0 +inf.0) +nan.0)
   (check-equal? (- 'x) (* -1 'x))
   (check-equal? (- 'x 'y 'z) (+ 'x (* -1 (+ 'y 'z)))))
 (register-function '- -)
