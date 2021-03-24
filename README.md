@@ -10,3 +10,4 @@ See the file [`tests.rkt`](https://github.com/Metaxal/rascas/blob/master/tests.r
 
 Also check out another CAS for Racket, [soegaard/racket-cas](https://github.com/soegaard/racket-cas).
 
+See the [docs](https://docs.racket-lang.org/rascas/index.html).

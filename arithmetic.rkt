@@ -165,13 +165,11 @@
 
 (module+ test
   ; Checked with maxima for the harder cases
-  (check-equal? (^ 'a 1) 'a)
   (check-equal? (^ 0 0) +nan.0)
   (check-equal? (^ +nan.0 0) +nan.0) ; overrides Racket's default
   (check-equal? (^ 0 +nan.0) +nan.0)
   (check-equal? (^ 0 -0.2) +nan.0)
   (check-equal? (^ 0 -2) +nan.0)
-  (check-equal? (^ 'a 0) 1) ; WARNING: only for a≠0, but numeric before symbolic
   (check-equal? (^ 'a 2) '(^ a 2))
   (check-equal? (^ 'a -4) '(^ a -4))
   (check-equal? (^ (^ 'a 2) 3) '(^ a 6))
@@ -188,7 +186,13 @@
   (check-equal? (* (^ 'x 2/3)
                    (^ 'x 4/3))
                 `(^ x 2))
-  (check-equal? (^ (exp 'u) 'v) '(exp (* u v))))
+  (check-equal? (^ (exp 'u) 'v) '(exp (* u v)))
+
+  ;; Numeric over symbolic
+  (check-equal? (^ 'a 1) 'a)
+  (check-equal? (^ 'a 0) 1) ; because 0^0 is nan
+  (check-equal? (^ 0 'a) 0)
+  )
 
 
 (define (expand-power u n)
@@ -215,7 +219,7 @@
   (require rackunit)
   (check-equal? (sqrt 2) '(^ 2 1/2))
   (check-equal? (sqrt 'a) '(^ a 1/2))
-  (check-not-equal? (sqrt (* 'a 'a)) 'a)
+  (check-equal? (sqrt (* 'a 'a)) (abs 'a))
   (check-equal? (sqrt 4) 2)
   (check-true (number? (sqrt 2.))))
 
@@ -264,7 +268,7 @@
           [else
            (hash-update! counts x (λ (exps) (cons 1 exps)) '())
            (loop (cdr l))])))
-    ; End of loop, return a sorted and compact list
+    ; End of loop, return a sorted and compact list.
     (define lres
       (for/fold ([lres '()]
                  #:result (sort lres order-relation))
@@ -279,11 +283,11 @@
     ; Return value.
     (let ([tot-nums (apply rkt:* nums)])
       (cond
-        [(eqv? +nan.0 tot-nums) +nan.0]
-        [(null? lres)
-         ; Single element (number), remove '*.
+        [(or (null? lres) ; Single element (number), remove '*
+             (eqv? +nan.0 tot-nums) ; +nan.0 is contagious
+             ; Numeric over symbolic:
+             (eqv? 0 tot-nums)) ; Excludes 0.0 and -0.0
          tot-nums]
-        [(= 0 tot-nums) tot-nums] ; Includes 0.0 and -0.0
         [(and (null? (cdr lres))
               (= 1 tot-nums))
          ; Single element (not number), remove '*.
@@ -300,13 +304,41 @@
   (check-equal? (* 'x) 'x)
   (check-equal? (* 'x 'x) '(^ x 2))
   (check-equal? (* (* 'a 'b) (* 'b 'c) 'a)
-                '(* (^ a 2) (^ b 2) c)))
+                '(* (^ a 2) (^ b 2) c))
+
+  (check-equal? (* -0.0 0.0) -0.0)
+  (check-equal? (* 1 +inf.0) +inf.0)
+  (check-equal? (* -1 +inf.0) -inf.0)
+  (check-equal? (* 0 +inf.0) 0)
+
+  ;; +nan.0 is contagious.
+  (check-equal? (* 0. +inf.0) +nan.0)  
+  (check-equal? (* 0. +nan.0) +nan.0)
+  (check-equal? (* +inf.0 -inf.0) -inf.0)
+  (check-equal? (* +inf.0 +inf.0) +inf.0)
+  (check-equal? (* 1 +nan.0) +nan.0)
+  (check-equal? (* 1 +nan.0) +nan.0)
+   ; Overrides Racket's default, but consistent with NSpire and Wolfram Alpha.
+  (check-equal? (* 0 +nan.0) +nan.0)
+  
+   ;; Numeric over symbolic.
+  (check-equal? (* 0 'x) 0)
+  ; These can't be reduced because if the sign of x matters.
+  (check-equal? (* 0.0 'x) '(* 0.0 x))
+  (check-equal? (* -0.0 'x) '(* -0.0 x))
+  (check-equal? (* +inf.0 'x) '(* +inf.0 x))
+  (check-equal? (* -inf.0 'x) '(* -inf.0 x))
+  )
 
 (define (sqr x)
   (^ x 2))
 (register-function 'sqr sqr)
 ; Should we register a derivative too?
 ; Shouldn't be necessary if the function is applied first.
+
+(module+ test
+  (check-equal? (sqr (sqrt 'x)) 'x)
+  (check-equal? (sqrt (sqr 'x)) '(abs x)))
 
 (define (expand-product r s)
   (cond ( (sum? r)
@@ -316,80 +348,65 @@
         ( (sum? s) (expand-product s r) )
         ( else (* r s) )))
 
-(module+ test
-  (check-equal? (* 1 +inf.0) +inf.0)
-  (check-equal? (* -1 +inf.0) -inf.0)
-  (check-equal? (* 0 +inf.0) 0)
-  (check-equal? (* 0. +inf.0) +nan.0)  
-  (check-equal? (* 0. +nan.0) +nan.0)
-  (check-equal? (* +inf.0 -inf.0) -inf.0)
-  (check-equal? (* +inf.0 +inf.0) +inf.0)
-  (check-equal? (* 1 +nan.0) +nan.0)
-  (check-equal? (* 1 +nan.0) +nan.0)
-   ; Overrides Racket's default, but consistent with NSpire and Wolfram Alpha
-  (check-equal? (* 0 +nan.0) +nan.0)
-
-  (check-equal? (* 0 'x) 0) ; Numeric over symbolic
-  (check-equal? (* 0.0 'x) 0.0)
-  (check-equal? (* -0.0 'x) -0.0)
-  (check-equal? (* -0.0 0.0) -0.0)
-  )
-
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; +
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Assumes that the (always at most single) number in a product is always the first element.
 (define (+ . l)
-  (define counts (make-hash))
-  (define tot-nums 0)
-  ; Count how many elements of each kind, merging sums and looking inside products.
-  (let loop ([l l])
-    (unless (null? l)
-      (define x (car l))
-      (cond
-        [(number? x)
-         (set! tot-nums (rkt:+ tot-nums x))
-         (loop (cdr l))]
-        [(sum? x)
-         ; merge sums
-         (loop (cdr x))
-         (loop (cdr l))]
-        [(product? x)
-         (define args (cdr x))
-         (match args
-           ['() (set! tot-nums (rkt:+ 1 tot-nums))] ; should not happen though.
-           [`(,(? number? n) ,y)
-            (hash-update! counts y (λ (m) (rkt:+ n m)) 0)]
-           [`(,(? number? n) . ,rs)
-            (hash-update! counts `(* . ,rs) (λ (m) (rkt:+ n m)) 0)]
-           [else
-            (hash-update! counts x add1 0)])
-         (loop (cdr l))]
-        [else
-         (hash-update! counts x add1 0)
-         (loop (cdr l))])))
-  ; end of loop, return a sorted and compact list
-  (define lres
-    (for/fold ([lres '()]
-               #:result (sort lres order-relation))
-              ([(x n) (in-hash counts)])
-      (cond
-        [(= 0 n) lres]
-        [(= 1 n) (cons x lres)]
-        [else (cons (* n x) lres)])))
-  ; return value
-  (cond [(null? lres)
-         ; single element (number), remove '+
-         tot-nums]
-        [(and (null? (cdr lres))
-              (= 0 tot-nums))
-         ; single element (not number), remove '+
-         (car lres)]
-        [(= 0 tot-nums)
-         (cons '+ lres)]
-        [else
-         `(+ ,tot-nums . ,lres)]))
+  (let/ec return
+    (define counts (make-hash))
+    (define tot-nums 0)
+    ; Count how many elements of each kind, merging sums and looking inside products.
+    (let loop ([l l])
+      (unless (null? l)
+        (define x (car l))
+        (cond
+          [(eqv? +nan.0 x) (return +nan.0)] ; nan is contagious
+          [(number? x)
+           (set! tot-nums (rkt:+ tot-nums x))
+           (loop (cdr l))]
+          [(sum? x)
+           ; Merge sums.
+           (loop (cdr x))
+           (loop (cdr l))]
+          [(product? x)
+           (define args (cdr x))
+           (match args
+             ['() (set! tot-nums (rkt:+ 1 tot-nums))] ; should not happen though.
+             [`(,(? number? n) ,y)
+              (hash-update! counts y (λ (m) (rkt:+ n m)) 0)]
+             [`(,(? number? n) . ,rs)
+              (hash-update! counts `(* . ,rs) (λ (m) (rkt:+ n m)) 0)]
+             [else
+              (hash-update! counts x add1 0)])
+           (loop (cdr l))]
+          [else
+           (hash-update! counts x add1 0)
+           (loop (cdr l))])))
+    ; End of loop, return a sorted and compact list.
+    (define lres
+      (for/fold ([lres '()]
+                 #:result (sort lres order-relation))
+                ([(x n) (in-hash counts)])
+        (cond
+          [(= 0 n) lres]
+          [(= 1 n) (cons x lres)]
+          [else (cons (* n x) lres)])))
+    ; Return value.
+    (cond [(or (null? lres) ; no non-numeric element, remove '+ and return number
+               (= tot-nums +inf.0)
+               (= tot-nums -inf.0)
+               (eqv? tot-nums +nan.0))
+           tot-nums]
+          [(and (null? (cdr lres))
+                (= 0 tot-nums))
+           ; Single non-numeric element after removing 0, remove '+ .
+           (car lres)]
+          [(= 0 tot-nums)
+           (cons '+ lres)]
+          [else
+           `(+ ,tot-nums . ,lres)])))
 (register-function '+ +)
 
 (module+ test
@@ -400,7 +417,17 @@
   (check-equal? (+ 'a 3 'a (exp 'x) '4 (* 3 'a) (exp 'x))
                 '(+ 7 (* 5 a) (* 2 (exp x))))
   (check-equal? (+ (* 'a 'x) 'b)
-                '(+ b (* a x))))
+                '(+ b (* a x)))
+
+  ;; Numeric over symbolic
+  (check-equal? (+ +inf.0 'x) +inf.0) ; because x=-inf.0 is invalid
+  (check-equal? (+ -inf.0 'x) -inf.0)
+
+  ; +nan.0 is contagious
+  (check-equal? (+ +nan.0 'x) +nan.0) ; nan is contagious
+  (check-equal? (+ +inf.0 'x -inf.0) +nan.0)
+
+  )
 
 ;; TODO: for/sum by for/fold/derived
 
@@ -414,6 +441,7 @@
     [`(,x . ,ys) (+ x (* -1 (apply + ys)))]))
 
 (module+ test
+  ;; - defers to +, so numeric over symbolic should be respected automatically.
   (check-equal? (- 1 2 3) -4)
   (check-equal? (- 5) -5)
   (check-equal? (- +inf.0) -inf.0)
@@ -455,7 +483,12 @@
   (check-equal? (/ 3 'a) '(* 3 (^ a -1)))
   (check-equal? (/ 3 1 2 4) 3/8)
   (check-equal? (/ 'a 2 (* 2 'a)) 1/4)
-  (check-equal? (/ 'a 2 'b) '(* 1/2 a (^ b -1))))
+  (check-equal? (/ 'a 2 'b) '(* 1/2 a (^ b -1)))
+
+  ;; Numeric over symbolic
+  (check-equal? (/ 0 'x) 0)
+  (check-equal? (/ 0.0 'x) '(* 0.0 (^ x -1))) ; cannot reduce
+  )
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; exp
@@ -552,7 +585,9 @@
         [`(exp ,v) v]
         [`(^ ,v ,w)
          ; That's what maxima does, but this is a little incorrect (see tests)
-         (* w (log v))]
+         ; since it reduces the domain of v to positive numbers if w is even.
+         (* w (log v))
+         #;(* w (log (abs v)))]
         #;[`(gamma ,v)
            ; This can't work, because (gamma v) is reduced even before
            ; the log has a chance to catch it.
@@ -577,6 +612,14 @@
   (check-equal? (log (^ 2 'x) 2) 'x)
   (check-equal? (log (^ 'a 'x) 'a) 'x)
   (check-equal? (log (* 3 'x)) (+ (log 3) (log 'x)))
+
+  ;; +nan.0
+  (check-equal? (log +inf.0 +nan.0) +nan.0)
+  (check-equal? (log +inf.0 +inf.0) +nan.0)
+
+  ;; Numeric over symbolic
+  (check-equal? (log +inf.0 'x) '(* +inf.0 (^ (log x) -1))) ; (log x) could be negative
+  ; (we could actually remove the ^-1. This could be done in sgn)
 
   ; Some annoying cases:
   ; (log (sqr x)) is defined for all x, but not (* 2 (log x))
