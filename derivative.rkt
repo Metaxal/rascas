@@ -88,9 +88,16 @@
                                  d-arg-x)))
                           dfs
                           args)))
-          `(derivative ,u ,x))]
+          ; It's better to raise an error, because attempting to substitute
+          ; inside a derivative may lead to incorrect results
+          (error (format "Unknown derivative for ~v in ~v" u x))
+          #;`(derivative ,u ,x))]
        ; Unknown case (reachable?).
-       [else `(derivative ,u ,x)])]))
+       [else
+        ; It's better to raise an error, because attempting to substitute
+        ; inside a derivative may lead to incorrect results
+        (error (format "Unknown derivative for ~v in ~v" u x))
+        #;`(derivative ,u ,x)])]))
 
 ;; So that an expression that could not be derived earlier can now be.
 ;; See tests for an example.

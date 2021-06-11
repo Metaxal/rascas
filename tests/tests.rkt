@@ -896,16 +896,6 @@
             (derivative (* 2 x a (log x)) x)
             (* 2 a (+ 1 (log x))))
 
-(test-equal "Derivative multi product.2"
-            (derivative (* 3  'x '(f x) '(g x)) 'x)
-            '(* 3 (+ (* (derivative (f x) x)
-                        (g x)
-                        x)
-                     (* (f x)
-                        (+ (g x)
-                           (* (derivative (g x) x)
-                              x))))))
-
 (test-equal "Mendelson: 8.1"
             (derivative (alge "2*x-7") x)
             2)
@@ -943,10 +933,27 @@
             (derivative '(log x) 'x)
             (^ x -1))
 
+;;; Test cases deactivated because requesting a derivative of an unknown function now raises an
+;;; exception, for safety reason, as it can lead to silent and hard-to-track wrong results when
+;;; combined with substitute.
+;;; See tests/derivative.rkt for more info.
+#;
+(test-equal "Derivative multi product.2"
+            (derivative (* 3  'x '(f x) '(g x)) 'x)
+            '(* 3 (+ (* (derivative (f x) x)
+                        (g x)
+                        x)
+                     (* (f x)
+                        (+ (g x)
+                           (* (derivative (g x) x)
+                              x))))))
+
+#;
 (test-equal "derivative log foo"
             (derivative '(log (foo x)) 'x)
             '(* (derivative (foo x) x) (^ (foo x) -1)))
 
+#;
 (test-equal "derivative exp foo"
             (derivative '(* 3 (exp (foo x))) 'x)
             '(* 3 (derivative (foo x) x) (exp (foo x))))

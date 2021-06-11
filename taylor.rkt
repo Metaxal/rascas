@@ -48,7 +48,8 @@
     (nth-derivative (smart-simplify (derivative f x)) x (- n 1))))
 
 (module+ test
-  (require rackunit)
+  (require rackunit
+           rascas/trig-functions)
 
   (check-equal? (taylor (log (+ 1 'z)) 'z 0 4)
                 '(+ z (* -1/2 (^ z 2)) (* 1/3 (^ z 3)) (* -1/4 (^ z 4))))
@@ -56,7 +57,7 @@
                 '(+ -1 z (* -1/2 (^ (+ -1 z) 2)) (* 1/3 (^ (+ -1 z) 3)) (* -1/4 (^ (+ -1 z) 4))))
   (check-equal? (taylor (sin 'x) 'x 0 5)
                 '(+ x (* -1/6 (^ x 3)) (* 1/120 (^ x 5))))
-  
+
   (check-equal? (taylor '(exp x) 'x 'x0 3)
                 '(+
                   (exp x0)

@@ -50,12 +50,23 @@
 
 ;; Register a function /after/ it has been used for derivation.
 ;; Simplify the expression to obtain the correct derivative.
+;; WARNING: Test disabled because it's risky when using substitute
+;; (see test just below)
+#;
 (let ()
   (define bad-deriv (derivative '(__unknown-deriv (* x 2)) 'x))
   (check-equal? bad-deriv '(derivative (__unknown-deriv (* x 2)) x))
   (register-function '__unknown-deriv (λ (x) (sqr x)))
   (check-equal? (automatic-simplify bad-deriv)
                 (* 8 'x))) 
+
+(let ()
+  ;; Simulate a known function without a known derivative
+  (define (floc x) (+ x 10))
+  (register-function 'floc floc)
+  (check-exn exn:fail? (λ () (substitute (derivative '(floc x) 'x) 'x 0))))
+
+
 
 (check-derivative gamma (build-list 10 (λ (i) (* 10 (random)))))
 
@@ -217,6 +228,3 @@
 #;(tree-size (jacobian (apply * (build-list 100 (λ (i) (+ i 1 'x))))
             '(x))
              #:log-product? #t)
-
-
-
