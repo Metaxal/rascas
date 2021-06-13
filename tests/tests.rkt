@@ -52,6 +52,7 @@
     [(_ a b) (with-syntax ([line (syntax-line stx)])
                #'(my-check #f a b line))]))
 
+
 (test-equal "Figure 1.5"
             (- (/ (* x y) 3))
             '(* -1/3 x y)
@@ -892,7 +893,12 @@
 ;; derivative
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(test-equal "Derivative multi product"
+(check member
+       (derivative (* 2 x a (log x)) x)
+       (list (* 2 a (+ 1 (log x)))
+             (+ (* 2 a) (* 2 a (log x))))
+            "Derivative multi product")
+#;(test-equal "Derivative multi product"
             (derivative (* 2 x a (log x)) x)
             (* 2 a (+ 1 (log x))))
 

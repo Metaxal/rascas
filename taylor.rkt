@@ -2,11 +2,16 @@
 (require "arithmetic.rkt"
          "derivative.rkt"
          "substitute.rkt"
-         "smart-simplify.rkt")
+         "smart-simplify.rkt"
+         "automatic-simplify.rkt")
 
 (provide taylor
-         nth-derivative)
-#;
+         nth-derivative
+         simplifier)
+
+(define simplifier (make-parameter automatic-simplify #;smart-simplify))
+
+#; ; old version, bad style and not efficient
 (define (taylor f x x0 n)
   (cons '+
         (let loop ([f f] [k 0])
@@ -26,7 +31,7 @@
   (define-values (tayl ff)
     (for/fold ([s (substitute f x x0)] [f f])
               ([k (in-range 1 (+ n 1))])
-      (define ff (smart-simplify (derivative f x)))
+      (define ff ((simplifier) (derivative f x)))
       (values (+ s (/ (* (expt (- x x0) k)
                          (substitute ff x x0))
                       (factorial k)))
@@ -40,15 +45,16 @@
                          (+ x0 (* rem-sym (- x x0)))))
           (factorial (+ n 1)))]
       [else 0]))
-  (+ tayl rem))
+  ((simplifier) (+ tayl rem)))
 
 (define (nth-derivative f x [n 0])
   (if (= n 0)
     f
-    (nth-derivative (smart-simplify (derivative f x)) x (- n 1))))
+    (nth-derivative ((simplifier) (derivative f x)) x (- n 1))))
 
 (module+ test
   (require rackunit
+           rascas/misc
            rascas/trig-functions)
 
   (check-equal? (taylor (log (+ 1 'z)) 'z 0 4)
@@ -63,7 +69,11 @@
                   (exp x0)
                   (* (exp x0) (+ x (* -1 x0)))
                   (* 1/2 (exp x0) (^ (+ x (* -1 x0)) 2))
-                  (* 1/6 (exp x0) (^ (+ x (* -1 x0)) 3)))))
+                  (* 1/6 (exp x0) (^ (+ x (* -1 x0)) 3))))
+
+  (check <=
+           (tree-size (nth-derivative (/ (* (+ 1 'x) (+ 2 'x) (+ 3 'x))) 'x 6))
+           1000))
 
 ;; Example
 (module+ drracket

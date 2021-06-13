@@ -35,7 +35,23 @@
         ;; Can lead to nan for zeros of u (instead of 0), but otherwise expands linearly
         ;; instead of quadratically.
         (* u (derivative (log u) x))]
-       [`(* ,v . ,ws)
+       [`(* . ,vs)
+        ; This can take quadratic time with the number of arguments but doesn't
+        ; produce inverses like the variant above.
+        ; Despite looking less compact than the version below, it actually leads to
+        ; more compact nth-order derivatives, as it avoids chains of (+ (* (+ (* ...))))
+        (apply +
+               (for/fold ([res '()] [rev-left '()] [right vs] #:result res)
+                         ([v (in-list vs)])
+                 (define new-right (rest right))
+                 (define der (derivative v x))
+                 (values (cons (apply *
+                                      der
+                                      (append rev-left new-right))
+                               res)
+                         (cons v rev-left)
+                         new-right)))]
+       #;[`(* ,v . ,ws)
         ; This can take quadratic time with the number of arguments but doesn't
         ; produce inverses like the variant above.
         (define *ws `(* . ,ws))
