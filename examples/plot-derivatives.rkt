@@ -14,7 +14,7 @@
 (define dfs
   (for/fold ([dfs (list fx)])
             ([i 6])
-    (cons (smart-simplify (derivative (first dfs) 'x))
+    (cons (derivative (first dfs) 'x)
           dfs)))
 
 ;; Plot them.
@@ -22,6 +22,6 @@
   (send
    (plot-frame
     (for/list ([df (in-list dfs)] [i (in-naturals)])
-      (function (tree->procedure df 'x #:inexact? #t)
+      (function (tree->procedure (smart-simplify df) 'x #:inexact? #t)
                 -7 7 #:color (+ i 1) #:samples 200 #:width 2)))
    show #t))
