@@ -137,7 +137,8 @@
                                  (^ (+ 'x 3) 'a))))
               '(+ (exp (+ 3 x)) (log (+ 3 x)) (^ (+ 3 x) a)))
 
-(check-equal?
+(check
+ member
  (rebind-all-let*
   (contract-let*
    '(*
@@ -150,12 +151,18 @@
      (sin (* (^ a 2) (^ (+ b x) 2)))
      (+ b x)))
   '_y)
- '(let* ((_y0 (+ b x))
-         (_y1 (^ a 2))
-         (_y2 (* (^ _y0 2) _y1))
-         (_y3 (exp (cos _y2)))
-         (_y4 (sin _y3)))
-    (* 2 _y0 _y1 _y3 (^ _y4 -1) (cos _y3) (sin _y2) (sin (log _y4)))))
+ '[(let* ((_y0 (+ b x))
+          (_y1 (^ a 2))
+          (_y2 (* (^ _y0 2) _y1))
+          (_y3 (exp (cos _y2)))
+          (_y4 (sin _y3)))
+     (* 2 _y0 _y1 _y3 (^ _y4 -1) (cos _y3) (sin _y2) (sin (log _y4))))
+   (let* ((_y0 (^ a 2))
+          (_y1 (+ b x))
+          (_y2 (* _y0 (^ _y1 2)))
+          (_y3 (exp (cos _y2)))
+          (_y4 (sin _y3)))
+     (* 2 _y0 _y1 _y3 (^ _y4 -1) (cos _y3) (sin _y2) (sin (log _y4))))])
 
 (check-equal?
  (expand-let*
