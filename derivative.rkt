@@ -13,7 +13,8 @@
          "contains.rkt"
          "substitute.rkt"
          racket/list
-         racket/match)
+         racket/match
+         syntax/parse/define)
 
 ;;; In rascas we consider symmetric derivatives lim_{h->0} (f(x+h)-f(x-h))/(2h):
 ;;; https://en.wikipedia.org/wiki/Symmetric_derivative
@@ -138,8 +139,42 @@
     (/ (- (f (+ x ε)) (f (- x ε)))
        (* 2 ε))))
 
+;:::::::::::::::::::::::::;
+;:: Undefined functions ::;
+;:::::::::::::::::::::::::;
 
+;; Useful to use functions of one argument that have no particular meaning, along with
+;; a number of its derivatives.
+(define (register-undefined-function/proc fname . deriv-names)
+  (unless (andmap symbol? (cons fname deriv-names))
+    (raise-argument-error 'register-abstract-function/proc "arguments must be symbols" fname deriv-names))
+  (define funs (map (λ (name) (λ (x) (list name x))) (cons fname deriv-names)))
+  (for ([fsym (in-list (cons fname deriv-names))]
+        [f (in-list funs)])
+    (register-function fsym f))
+  (for ([fsym (in-list (cons fname deriv-names))]
+        [df (in-list (rest funs))])
+    (register-derivative fsym df))
+  (apply values funs))
 
+#;
+(define-values (f df d2f d3f)
+  (register-abstract-function/proc 'f 'df 'd2f 'd3f))
+
+(define-syntax-parse-rule (register-undefined-function f:id ...)
+  (define-values (f ...)
+    (register-undefined-function/proc 'f ...)))
+
+;; Example
+#;
+(let ()
+  (register-undefined-function g dg d2g)
+  (derivative (+ (g 'x) (dg (* 'y 'x))) 'x))
+;-> #; (+ (dg x) (* (d2g (* x y)) y))
+
+;::::::::::::::;
+;:: Jacobian ::;
+;::::::::::::::;
 
 ;; Returns the jacobian of tree on xs, in the form of a _list surrounded
 ;; by a _let*, using 'reverse' mode.
