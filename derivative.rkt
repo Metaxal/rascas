@@ -18,8 +18,8 @@
 
 ;;; In rascas we consider symmetric derivatives lim_{h->0} (f(x+h)-f(x-h))/(2h):
 ;;; https://en.wikipedia.org/wiki/Symmetric_derivative
-;;; which are defined also for non-continuous functions
-;;; such as |x| or sgn(x), and have better numerical stability.
+;;; which are defined also for non-continuous derivatives
+;;; such as |x|, and have better numerical stability.
 
 (define (derivative u x)
   (cond
